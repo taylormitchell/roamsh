@@ -121,103 +121,37 @@ Scanner.prototype.isAtEnd = function() {
 }
 
 
-function Expr() {
+function Command(...expressions) {
+    this.expressions = expressions;
 }
-Expr.prototype.accept = function() {
-    throw "Expression needs to implement the accept method"
-}
-
-
-function Command(...terms) {
-    this.terms = terms;
-}
-Command.prototype = Object.create(Expr.prototype)
-Command.prototype.constructor = Command
 Command.prototype.accept = function(visitor) {
     return visitor.visitCommand(this)
 }
 
-function List(...values) {
-    this.values = values
+function Concat(...expressions) {
+    this.expressions = expressions
 }
-List.prototype = Object.create(Expr.prototype)
-List.prototype.constructor = List
-List.prototype.accept = function(visitor) {
-    return visitor.visitList(this)
-}
-
-function Concat(...values) {
-    this.values = values
-}
-Concat.prototype = Object.create(Expr.prototype)
-Concat.prototype.constructor = Concat
 Concat.prototype.accept = function(visitor) {
     return visitor.visitConcat(this)
 }
 
-
-/**
- * 
- * @param {*} openBracket 
- * @param {Expr} inside 
- * @param {*} closedracket 
- */
-function PageRef(openBracket, title, closeBracket) {
-    this.openBracket = openBracket;
-    this.inside = title;
-    this.closeBracket = closeBracket;
+function PageRef(...expressions) {
+    this.expressions = expressions;
 }
-PageRef.prototype = Object.create(Expr.prototype)
-PageRef.prototype.constructor = PageRef
 PageRef.prototype.accept = function(visitor) {
     return visitor.visitPageRef(this)
 }
 
-
-function BlockRef(uid) {
-    this.uid = uid
+function Quote(...expressions) {
+    this.expressions = expressions
 }
-BlockRef.prototype = Object.create(Expr.prototype)
-BlockRef.prototype.constructor = BlockRef
-BlockRef.prototype.accept = function(visitor) {
-    return visitor.visitBlockRef(this)
+Quote.prototype.accept = function(visitor) {
+    return visitor.visitQuote(this)
 }
-
-
-/**
- * 
- * @param {"/"|PageRef|BlockRef} root 
- * @param {Array<string>} strings 
- */
-function Path(root, strings) {
-    this.root = root
-    this.strings = string 
-}
-Path.prototype = Object.create(Expr.prototype)
-Path.prototype.constructor = Path
-Path.prototype.accept = function(visitor) {
-    return visitor.visitPath(this)
-}
-
-function EscapedChar(backslash, value) {
-    this.backslash = backslash
-    this.value = value
-}
-EscapedChar.prototype = Object.create(Expr.prototype)
-EscapedChar.prototype.constructor = EscapedChar
-EscapedChar.prototype.accept = function(visitor) {
-    return visitor.visitEscapedChar(this)
-}
-EscapedChar.prototype.toString = function() {
-    return this.value.lexeme
-}
-
 
 function Literal(value) {
     this.value = value
 }
-Literal.prototype = Object.create(Expr.prototype)
-Literal.prototype.constructor = Literal
 Literal.prototype.accept = function(visitor) {
     return visitor.visitLiteral(this)
 }
@@ -225,49 +159,7 @@ Literal.prototype.toString = function() {
     return this.value.toString()
 }
 
-function String(...chars) {
-    this.chars = chars
-}
-String.prototype = Object.create(Expr.prototype)
-String.prototype.constructor = String
-String.prototype.accept = function(visitor) {
-    return visitor.visitString(this)
-}
 
-
-function Func(expression) {
-    this.expression = expression
-}
-Func.prototype = Object.create(Expr.prototype)
-Func.prototype.constructor = Func
-Func.prototype.accept = function(visitor) {
-    return visitor.visitFunc(this)
-}
-
-function Arg(expression) {
-    this.expression = expression
-}
-Arg.prototype = Object.create(Expr.prototype)
-Arg.prototype.constructor = Arg
-Arg.prototype.accept = function(visitor) {
-    return visitor.visitArg(this)
-}
-
-/**
- * 
- * @param {string} quote 
- * @param {string|Path} value
- */
-function Quote(open, inside, close) {
-    this.open = open
-    this.inside = inside
-    this.close = close
-}
-Quote.prototype = Object.create(Expr.prototype)
-Quote.prototype.constructor = Quote
-Quote.prototype.accept = function(visitor) {
-    return visitor.visitQuote(this)
-}
 
 
 
@@ -289,139 +181,66 @@ Parser.prototype.command = function() {
     return new Command(...terms)
 }
 Parser.prototype.term = function() {
-    `Test cases
-    ls "lo""gs" -> ls logs
-    ls \""lo""gs" -> ls "logs
-    lsEOL
-    ls EOL
-    \ls EOL
-    l\sEOL
-    ls\ EOL -> "ls "
-    `
     var expressions = []
-    var literals = []
     while (!this.match(TokenType.SPACE) && !this.isAtEnd()) {
-        let expr = this.string()
-        if (!expr) break // is this necessary?
-        if (expr instanceof Literal) {
-            literals.push(expr)
-        } 
-        else {
-            if (literals.length > 0) {
-                expressions.push(new String(...literals))
-                literals = []
-            }
-            expressions.push(expr)
-        }
-    } 
-    if (literals.length > 0) expressions.push(new String(...literals))
+        expressions.push(this.primary())
+    }
+    if (expressions.length === 0) return false
+    if (expressions.length === 1) return expressions[0]
+    return new Concat(...expressions)
+}
 
-    if (expressions.length === 0) {
-        return false
-    } else if (expressions.length === 1) {
-        return expressions[0]
-    } else {
-        return new Concat(...expressions)
-    }
+Parser.prototype.primary = function() {
+    if (this.match(TokenType.BACKSLASH)) new Literal(this.advance().lexeme)
+    expr = this.quote()
+    if (expr) return expr
+    expr = this.pageRef()
+    if (expr) return expr
+    return new Literal(this.advance().lexeme)
 }
-Parser.prototype.string = function() {
-    // for (func of [this.backslash, this.quote, this.path, this.pageRef, this.char]) {
-    for (let func of ["backslash", "quote", "pageRef"]) {
-        let expr = this[func]()
-        if (expr) return expr
-    }
-    let token = this.advance()
-    return new Literal(token.literal)
-}
-Parser.prototype.backslash = function() {
-    if (!(this.match(TokenType.BACKSLASH))) {
-        return false
-    }
-    let token = this.advance()
-    return new Literal(token.literal)
-}
+
 Parser.prototype.quote = function() {
-    // Opening
+    let start = this.current
     if (!(this.match(TokenType.QUOTE_DOUBLE, TokenType.QUOTE_SINGLE))) {
         return false
     }
-    if (!this.match(TokenType.QUOTE_DOUBLE) && !this.match(TokenType.QUOTE_SINGLE)) {
+    let openToken = this.previous()
+
+    var inner = []
+    while (!(this.checkMany(openToken.type) || this.isAtEnd())) {
+        inner.push(this.primary())
+    }
+
+    if (!this.match(openToken.type)) {
+        this.current = start
         return false
     }
-    if (!(this.match(TokenType.QUOTE_DOUBLE, TokenType.QUOTE_SINGLE))) {
-        return false
-    }
-    var openToken = this.previous() 
-
-    // Inside quotes
-    var exprs = []
-    var tokens = []
-    while (!(this.match(openToken.type) || this.isAtEnd())) {
-        expr = this.pageRef()
-        if (expr) {
-            if (tokens.length > 0) {
-                exprs.push(new String(...tokens))
-                tokens = []
-            }
-            exprs.push(expr)
-        } else {
-            tokens.push(this.advance())
-        }
-    }
-    if (tokens.length > 0) exprs.push(new String(...tokens))
-
-    // End of quote
-    closeToken = this.previous()
-    if (closeToken.type !== openToken.type) {
-        throw "Reached end of line without a matching quote"
-    }
-
-    return new Quote(
-        new Literal(openToken), 
-        new List(...exprs),
-        new Literal(closeToken)
-    )
-}
-
-Parser.prototype.chars = function() {
-    if (this.charTokens.length === 0) return false
-    let literal = new Literal(charTokens.map(t => t.literal).join(""))
-    this.charTokens = []
-    return literal
+    return new Quote(...inner)
 }
 
 Parser.prototype.pageRef = function() {
+    let start = this.current
     // Start of page ref
     if (!(this.matchMany(TokenType.SQUARE_OPEN, TokenType.SQUARE_OPEN))) {
         return false
     }
-    var open = new Literal(this.previous(2).map(t => t.literal).join(""))
 
     // Inside page ref
-    var exprs = []
-    var charTokens = []
-    while (!(this.matchMany(TokenType.SQUARE_CLOSE, TokenType.SQUARE_CLOSE) || this.isAtEnd())) {
-        expr = this.pageRef()
-        if (expr) {
-            literal = this.chars()
-            if (literal) exprs.push(literal)
-        } else {
-            this.charTokens.push(this.advance())
-        }
+    var inner = []
+    while (!(this.checkMany(TokenType.SQUARE_CLOSE, TokenType.SQUARE_CLOSE) || this.isAtEnd())) {
+        inner.push(this.primary())
     }
-    literal = this.chars()
-    if (literal) exprs.push(literal)
 
     // End of page ref
-    if (this.previous().type !== TokenType.SQUARE_CLOSE) {
-        // Hit end of line without finding closing brackets
+    if (!(this.matchMany(TokenType.SQUARE_CLOSE, TokenType.SQUARE_CLOSE))) {
+        this.current = start
         return false
     }
-    var close = new Literal(this.previous(2).map(t => t.literal).join(""))
-    return new PageRef(open, inside, close)
+    return new PageRef(...inner)
 }
+
 Parser.prototype.previous = function(i=0) {
-    if (i === 0) this.tokens[this.current - 1] 
+    if (i === 0) return this.tokens[this.current - 1] 
     return this.tokens.slice(this.current - i, this.current)
 }
 Parser.prototype.peek = function(i=0) {
@@ -432,18 +251,23 @@ Parser.prototype.advance = function(i=1) {
     return this.previous()
 
 }
-
-
 // Check the next series of token types match given types then advance
-Parser.prototype.matchMany = function(...tokenTypes) {
-    for (let [i, tokenType] of Object.entries(tokenTypes)) {
+Parser.prototype.checkMany = function(...tokenTypes) {
+    for (let [i, tokenType] of tokenTypes.entries()) {
         if (this.isAtEnd(i)) return false;
         if (tokenType !== this.peek(i).type) {
             return false
         }
     }
-    this.advance(tokenTypes.length)
     return true
+}
+// Same as checkMany but advance if true
+Parser.prototype.matchMany = function(...tokenTypes) {
+    if (this.checkMany(...tokenTypes)) {
+        this.advance(tokenTypes.length)
+        return true
+    }
+    return false
 }
 // Check the next token matches _any_ of tokenTypes
 Parser.prototype.check = function(...tokenTypes) {
@@ -455,7 +279,7 @@ Parser.prototype.check = function(...tokenTypes) {
     }
     return false
 }
-// Check the next token matches _any_ of tokenTypes then advance
+// Same as check but advance if true
 Parser.prototype.match = function(...tokenTypes) {
     if (this.check(...tokenTypes)) {
         this.advance()
@@ -532,33 +356,20 @@ AstPrinter.prototype.print = function(expression) {
     return expression.accept(this);
 }
 AstPrinter.prototype.visitPageRef = function(expr) {
-    return this.parenthesize("PageRef", expr.openBracket, expr.inside, expr.closeBracket)
+    return this.parenthesize("PageRef", ...expr.expressions)
 }
 AstPrinter.prototype.visitQuote = function(expr) {
-    return this.parenthesize("Quote", expr.open, expr.inside, expr.close)
+    return this.parenthesize("Quote", ...expr.expressions)
 }
 AstPrinter.prototype.visitCommand = function(expr) {
-    return this.parenthesize("Command", expr.func, ...expr.args)
+    return this.parenthesize("Command", ...expr.expressions)
 }
-AstPrinter.prototype.visitList = function(expr) {
-    return this.parenthesize("List", ...expr.values)
-}
-AstPrinter.prototype.visitString = function(expr) {
-    return '"' + expr.chars.map(c => c.toString()).join("") + '"'
+AstPrinter.prototype.visitConcat = function(expr) {
+    return this.parenthesize("Concat", ...expr.expressions)
 }
 AstPrinter.prototype.visitLiteral = function(expr) {
     if (expr.value === null) return "nil";
-    return expr.toString()
-}
-AstPrinter.prototype.visitEscapedChar = function(expr) {
-    if (expr.value === null) return "nil";
-    return expr.toString()
-}
-AstPrinter.prototype.visitFunc = function(expr) {
-    return this.parenthesize("Func", expr.expression)
-}
-AstPrinter.prototype.visitArg = function(expr) {
-    return this.parenthesize("Arg", expr.expression)
+    return '"' + expr.toString() + '"'
 }
 AstPrinter.prototype.parenthesize = function(name, ...exprs) {
     exprsString = exprs.map(expr => expr.accept(this)).join(" ")
@@ -582,7 +393,8 @@ Interpreter.prototype.visitCommand = function(expr) {
 }
 
 Interpreter.prototype.visitLiteral = function(expr) {
-    return expr.value
+    return '"' + expr.value.toString() + '"'
+
 }
 Interpreter.prototype.visitQuote = function(expr) {
     var values = this.evaluate(expr.inside)
@@ -594,10 +406,6 @@ Interpreter.prototype.visitQuote = function(expr) {
         return values.join("")
     }
 }
-Interpreter.prototype.visitString = function(expr) {
-    return expr.toString()
-}
-
 Interpreter.prototype.visitPageRef = function(expr) {
     return {
         openBracket: this.evaluate(this.openBracket),
@@ -605,25 +413,15 @@ Interpreter.prototype.visitPageRef = function(expr) {
         closeBracket: this.evaluate(this.closeBracket)
     }
 }
-Interpreter.prototype.visitList = function(expr) {
-    return expr.values.map(expr => this.evaluate(expr))
-}
 Interpreter.prototype.evaluate = function(expr) {
     return expr.accept(this)
 }
 
 
-
-function print(...args) {
-    for (let arg of args) {
-        console.log(arg)
-    }
-}
-
 function main() {
     // var source = "ls [[Herp derp]]"
     // var source = `ls /[[something]]/that/"I think"/is a path"and""thing"`
-    var source = "pri'nt' derp herp burp"
+    var source = `pri'nt[[derp]]"hi"' derp [[herp burp`
     console.log(source)
     var scanner = new Scanner(source)
     var tokens = scanner.scanTokens()
@@ -632,11 +430,41 @@ function main() {
     var expression = parser.parse()
     let printer = new AstPrinter()
     console.log(printer.print(expression))
-    var interpreter = new Interpreter()
-    var value = interpreter.interpret(expression)
-    console.log(value)
+//    var interpreter = new Interpreter()
+//    var value = interpreter.interpret(expression)
+//    console.log(value)
+}
+
+
+function test() {
+
+    // Test Parser.pageRef
+    // base case
+    var source = "[[Page]]"
+    tokens = (new Scanner(source)).scanTokens()
+    parser = new Parser(tokens)
+    pageRef = parser.pageRef()
+    "Page".split("").forEach((expected, i) => {
+        let actual = pageRef.title[i].value;
+        if (expected !== actual) {
+            throw `Expected ${expected} !== Actual ${actual} `
+        }
+    })
+    // missing closing brackets
+    var source = "[[Page"
+    tokens = (new Scanner(source)).scanTokens()
+    parser = new Parser(tokens)
+    pageRef = parser.pageRef()
+    if (pageRef !== false) throw `${pageRef} !== false`
+    if (parser.current !== 0) throw `${parser.current} !== 0`
+    // page in page
+    var source = "[[Page [[in page]]]]"
+    tokens = (new Scanner(source)).scanTokens()
+    parser = new Parser(tokens)
+    pageRef = parser.pageRef()
+
+    console.log("All tests passed!")
 }
 
 
 main()
-
