@@ -248,21 +248,23 @@ Location.fromPath = function(path) {
             var block = res[0]
         }
     }
+    var location = block.getLocation()
     // Factor in modifiers
     for (modifier of path.modifiers) {
         match = modifier.match(/\/(?:\[(\d+)\])?/)
         if (match) {
             idx = match[1] || 0
-            block = block.getChildren()[idx]
+            location.parentUid = Block.fromLocation(location).uid
+            location.order = idx
         } else if ( modifier === "^" ) {
-            block = block.getSiblingAbove()
+            location.order -= 1
         } else if (modifier == "$" ) {
-            block = block.getSiblingBelow()
+            location.order += 1
         } else {
             throw `"Invalid modifier: "${modifier}"`
         }
     }
-    return block.getLocation()
+    return location
 }
 
 // Location.fromPath = function(path) {
@@ -631,8 +633,20 @@ Block.prototype.createDate = function() {
 
 
 function Page(idx) {
-    // Handle idx as a page title
-    if (typeof(idx) === "string") {
+    if (idx instanceof Page) {
+        // Handle idx as page object
+        this.uid = idx.uid
+        return
+    } else if (typeof(idx) === "number") {
+        // Handle idx as internal id
+        let obj = window.roamAlphaAPI.pull("[*]", id)
+        if (obj[":node/title"] === undefined) {
+            throw "id ${idx} exists but isn't a Page object"
+        }
+        this.uid = obj[":block/uid"]
+        return
+    } else if (typeof(idx) === "string") {
+        // Handle idx as a page title
         let title = isPageRef(idx) ? pageRefToTitle(idx) : idx
         let uid = window.roamAlphaAPI.q(`[
             :find ?uid .
@@ -640,13 +654,23 @@ function Page(idx) {
                 [?e :node/title "${title}"]
                 [?e :block/uid ?uid]
         ]`)
-        if (uid !== null) idx = uid
+        if (uid !== null) {
+            this.uid = uid
+            return
+        } 
+        // Handle idx as uid
+        let id = window.roamAlphaAPI.q(`[
+            :find ?e .
+            :where
+                [?e :block/uid "${idx}"]
+                [?e :node/title]
+        ]`)
+        if (id) {
+            this.uid = idx
+            return
+        }
     }
-    try {
-        Block.call(this, idx)
-    } catch {
-        throw `identifier ${idx} is invalid for a Page`
-    }
+    throw `identifier ${idx} is invalid for a Page`
 }
 Page.prototype = Object.create(Block.prototype)
 Page.prototype.constructor = Page;
@@ -903,7 +927,7 @@ commandHistory = {
     },
     addToEnd: function(command) {
         let p = new Page(pageNameHistory)
-        string = "`".repeat(3)+"plain text" + "\n" + command+"`".repeat("`")
+        string = "`".repeat(3)+"plain text" + "\n" + command+"`".repeat(3)
         p.appendChild(string)
     }
 }
