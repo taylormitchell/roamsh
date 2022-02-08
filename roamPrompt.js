@@ -346,23 +346,53 @@ function splitOffset(path) {
 }
 
 
-function Block(uid) {
-    if (uid.constructor.name == "Block") {
-        uid = uid.uid
-    } else if (isBlockRef(uid)) {
-        uid = uid.slice(2, -2)
-    } else if (isBlockUid(uid)) {
-        uid = uid
-    } else if (uid === ".") {
-        uid = roamAlphaAPI.ui.getFocusedBlock()["block-uid"]
-    } else {
-        throw `${uid} isn't a valid uid, block, or path`
+var roam = {
+    getById: function(id) {
+        let obj = window.roamAlphaAPI.pull("[*]", id)
+        if (obj[":node/title"] === undefined) {
+            return new Block(id)
+        } else {
+            return new Page(id)
+        }
+    },
+    getByUid: function(uid) {
+        let obj = window.roamAlphaAPI.q(`[
+            :find (pull ?e [*]) .
+            :where
+                [?e :block/uid "${uid}"]
+        ]`)
+        if (obj["title"] === undefined) {
+            return new Block(obj["uid"])
+        } else {
+            return new Page(obj["uid"])
+        }
     }
+}
 
+
+function Block(idx) {
+    if (idx instanceof Block) {
+        this.uid = idx.uid
+    } else if (typeof(idx) === "number") {
+        this.uid = window.roamAlphaAPI.q(`[
+            :find ?uid .
+            :where
+                [${idx} :block/uid ?uid]
+        ]`)
+    } else if (typeof(idx) === "string") {
+        if (isBlockRef(idx)) {
+            this.uid = idx.slice(2, -2)
+        } else if (isBlockUid(idx)) {
+            this.uid = idx
+        } else if (idx === ".") {
+            this.uid = roamAlphaAPI.ui.getFocusedBlock()["block-uid"]
+        }
+    }
+    if (!this.uid) throw `${idx} isn't a valid id, uid, or block`
     let blockAttrs = window.roamAlphaAPI.q(`[
         :find (pull ?e [*]) .
         :where
-            [?e :block/uid "${uid}"]
+            [?e :block/uid "${this.uid}"]
     ]`)
     for (const [attr, val] of Object.entries(blockAttrs)) {
         this[attr] = val;
@@ -402,12 +432,12 @@ Block.create = async function (string = "", location=null) {
             "block": { "string": string, "uid": uid }
         }
     );
-
-    // return new Block(uid)
+    return new Block(uid)
 }
 
 Block.getFocused = function() {
     let res = roamAlphaAPI.ui.getFocusedBlock()
+    if (!res) return null
     return new Block(res["block-uid"])
 }
 
@@ -446,6 +476,48 @@ Block.prototype.zoom = async function () {
     await window.roamAlphaAPI.ui.mainWindow.openBlock(
         {block: {uid: this.uid}}
     )
+}
+
+Block.prototype.getString = function() {
+    let string = window.roamAlphaAPI.q(`[
+        :find ?s .
+        :where
+            [?e :block/uid "${this.uid}"]
+            [?e :block/string ?s]
+    ]`)
+    return string
+}
+
+Block.prototype.getRefs = function() {
+    let ids = window.roamAlphaAPI.q(`[
+        :find [ ?r ... ]
+        :where
+            [?e :block/uid "${this.uid}"]
+            [?e :block/refs ?r]
+    ]`)
+    return ids.map(id => roam.getById(id))
+}
+
+Block.prototype.getPageRefs = function() {
+    let ids = window.roamAlphaAPI.q(`[
+        :find [ ?r ... ]
+        :where
+            [?e :block/uid "${this.uid}"]
+            [?e :block/refs ?r]
+            [?r :node/title]
+    ]`)
+    return ids.map(id => roam.getById(id))
+}
+
+Block.prototype.getBlockRefs = function() {
+    let ids = window.roamAlphaAPI.q(`[
+        :find [ ?r ... ]
+        :where
+            [?e :block/uid "${this.uid}"]
+            [?e :block/refs ?r]
+            [?r :block/string]
+    ]`)
+    return ids.map(id => roam.getById(id))
 }
 
 Block.prototype.getChildren = function () {
@@ -503,19 +575,17 @@ Block.prototype.getLocation = function () {
     return new Location(parent.uid, this.order)
 }
 
-Block.prototype.addChild = async function (blockOrString, idx = 0) {
-    if (typeof (blockOrString) === "string") {
-        let string = blockOrString
-        return Block.create(string, new Location(this.uid, idx))
-    } else {
-        let block = blockOrString
+Block.prototype.addChild = async function (child, idx = 0) {
+    if (child instanceof Block) {
         await window.roamAlphaAPI.moveBlock(
             {
                 "location": { "parent-uid": this.uid, "order": idx },
-                "block": { "uid": block.uid }
+                "block": { "uid": child.uid }
             }
         );
         return new Block(block.uid)
+    } else {
+        return Block.create(child.toString(), new Location(this.uid, idx))
     }
 }
 
@@ -560,31 +630,23 @@ Block.prototype.createDate = function() {
 }
 
 
-function Page(title) {
-    if (isPageRef(title)) {
-        title = pageRefToTitle(title)
+function Page(idx) {
+    // Handle idx as a page title
+    if (typeof(idx) === "string") {
+        let title = isPageRef(idx) ? pageRefToTitle(idx) : idx
+        let uid = window.roamAlphaAPI.q(`[
+            :find ?uid .
+            :where
+                [?e :node/title "${title}"]
+                [?e :block/uid ?uid]
+        ]`)
+        if (uid !== null) idx = uid
     }
-
-    // TODO: hacky implementation
-    if (title === "today") {
-        title = getRoamDate()
-    } else if (title == "tomorrow") {
-        var tomorrow = new Date();
-        tomorrow.setDate(tomorrow.getDate() + 1);
-        title = getRoamDate(tomorrow)
+    try {
+        Block.call(this, idx)
+    } catch {
+        throw `identifier ${idx} is invalid for a Page`
     }
-
-    let uid = window.roamAlphaAPI.q(`[
-        :find ?uid .
-        :where
-            [?e :node/title "${title}"]
-            [?e :block/uid ?uid]
-    ]`)
-    if (uid === null) {
-        throw `Page with title ${title} doesn't exist`
-    }
-    Block.call(this, uid)
-    this.title = title
 }
 Page.prototype = Object.create(Block.prototype)
 Page.prototype.constructor = Page;
@@ -702,8 +764,8 @@ RoamScript = {
             // Transpile roam script to javascript
             let [f, ...args] = tokens
             args = args.map(x => '"' + x + '"').join(",")
-            var js = `${f}(${args})`
-            res = eval(js)
+            var source = `${f}(${args})`
+            res = eval(source)
             console.log(res)
         }
         return outputs
@@ -766,11 +828,18 @@ offsetChars = [adjacentAfterChar, adjacentBeforeChar, childChar, parentChar]
 pageNameHistory = "RoamTerm_history"
 
 
-function RoamTerm(block=null) {
-    this.block = block ? block : Block.getFocused()
+function RoamTerm(block) {
+    this.block = block
     this.uid = this.block.uid
     this.commandHistoryId = 0
 }
+
+RoamTerm.getFocused = function() {
+    let block = Block.getFocused()
+    if (!block) return null
+    return new RoamTerm(block)
+}
+
 RoamTerm.prototype.isActive = function() {
     termElement = this.block.getElement()
     return termElement.querySelector(".rm-block-main").classList.contains("roamTerm")
@@ -843,8 +912,8 @@ commandHistory = {
 if (typeof document !== "undefined") {
     document.onkeydown = function (e) {
         if (e.key === "Backspace") {
-            let roamTerm = new RoamTerm()
-            if (roamTerm.isActive() && !roamTerm.string()) {
+            let roamTerm = RoamTerm.getFocused()
+            if (roamTerm !== null && roamTerm.isActive() && !roamTerm.string()) {
                 roamTerm.deactivate()
             }
         }
