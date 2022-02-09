@@ -1,8 +1,10 @@
 let { RoamResearchShell } = require('./shell');
-let { Block, Page, Roam, mv, cp, ln, rm, mk, ex, zm, ls, lk, echo, cat } = require('./core');
+let { Block, Page, Roam } = require('./core');
+let { mv, cp, ln, rm, mk, ex, zm, ls, lk, echo, cat } = require('./commands');
 
 
 PAGE_NAME_HISTORY = typeof(PAGE_NAME_HISTORY) === "undefined" ? "RoamTerm_history" : PAGE_NAME_HISTORY
+
 
 
 
