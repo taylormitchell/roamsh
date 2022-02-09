@@ -12,8 +12,15 @@
                 "<node_internals>/**"
             ],
             "program": "${workspaceFolder}/rrsh.js",
-            // "args": ["console.log 'stuff on one line'' and this too' but not these"]
-            "args": ["console.log 'stuff on one line'' and this too' but not these"]
-        }
+            "args": [
+                "console.log 'stuff on one line'' and this too' but not these"
+            ]
+        },
+        {
+            "name": "Node.js - Debug Current File",
+            "type": "node",
+            "request": "launch",
+            "program": "${file}"
+        },
     ]
 }
