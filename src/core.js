@@ -1,11 +1,3 @@
-const { RoamResearchShell, Scanner, Parser } = require('./rrsh');
-
-
-///////////////
-// Roam Core //
-///////////////
-
-// Helpers
 
 function getDateSuffix(d) {
     lastDigit = d % 10
@@ -219,8 +211,6 @@ function Location(parentUid, order) {
     this.parentUid = parentUid
     this.order = order
 }
-
-
 Location.fromPath = function(path) {
     if (!(path instanceof Path)) {
         path = new Path(path)
@@ -268,53 +258,6 @@ Location.fromPath = function(path) {
     return location
 }
 
-// Location.fromPath = function(path) {
-//     let [blockPath, offsetString] = splitOffset(path);
-//     // Get block at absolute path location
-//     if (!blockPath) {
-//         var block = Block.getFocused()
-//     } else {
-//         let [first, ...theRest] = blockPath.split("/").filter(x => x.length > 0);
-//         if (first === parentChar) { // TODO this feels hacky
-//             var block = Block.getFocused().getParent()
-//         } else {
-//             try { // assume it's a page title
-//                 var block = new Page(first)
-//             } catch {
-//                 try { // assume it's a block
-//                     var block = new Block(first)
-//                 } catch {
-//                     throw `"${first}" in path isn't a valid page or block`
-//                 }
-//             }
-//         }
-//         for (const searchString of theRest) {
-//             let res = block.getChildren().filter(({ string }) => string === searchString)
-//             if (res.length === 0) {
-//                 throw `"${searchString}" isn't a child of ${block}`
-//             }
-//             var block = res[0]
-//         }
-
-//     }
-//     // Factor in offset
-//     let offset = Offset.fromString(offsetString)
-//     if (!offset) {
-//         return new Location(block.getParent().uid, block.order)
-//     } else if (offset.direction === siblingDir ) {
-//         return new Location(block.getParent().uid, block.order + offset.magnitude)
-//     } else if (offset.direction === descendantDir ) {
-//         if (offset.magnitude >= 0) {
-//             return new Location(block.uid, offset.magnitude)
-//         } else {
-//             ancestor = block.getParents().slice(offset.magnitude)[0]
-//             return ancestor.getLocation()
-//         }
-//     } else {
-//         throw `invalid offset: ${offset}`
-//     }
-// }
-
 /**
  * Relative offset
  * @param {*} direction 
@@ -349,7 +292,7 @@ function splitOffset(path) {
 }
 
 
-var roam = {
+var Roam = {
     getById: function(id) {
         let obj = window.roamAlphaAPI.pull("[*]", id)
         if (obj[":node/title"] === undefined) {
@@ -632,6 +575,19 @@ Block.prototype.createDate = function() {
     return new Date(timestamp)
 }
 
+function block(o) {
+    if (isBlockUid(o) || o === ".") {
+        return new Block(o)
+    } else if (isBlockRef(o)) {
+        return new Block(blockRefToUid(o))
+    } else if (isPageTitle(o)) {
+        return new Page(o)
+    } else {
+        // assume it's a path
+        let loc = Location.fromPath(o)
+        return Block.fromLocation(loc)
+    }
+}
 
 function Page(idx) {
     if (idx instanceof Page) {
@@ -675,21 +631,6 @@ function Page(idx) {
 }
 Page.prototype = Object.create(Block.prototype)
 Page.prototype.constructor = Page;
-
-
-function block(o) {
-    if (isBlockUid(o) || o === ".") {
-        return new Block(o)
-    } else if (isBlockRef(o)) {
-        return new Block(blockRefToUid(o))
-    } else if (isPageTitle(o)) {
-        return new Page(o)
-    } else {
-        // assume it's a path
-        let loc = Location.fromPath(o)
-        return Block.fromLocation(loc)
-    }
-}
 
 
 /////////////////
@@ -776,201 +717,4 @@ zm = zoomBlock
 ls = listChildren
 lk = linkChildren
 
-
-RoamScript = {
-    execute: function(script) {
-        let lines = script.trim()
-            .split('\n')
-            .map(x => x.split(";"))
-            .reduce((x, y) => x.concat(y))
-        let outputs = [] 
-        for (const line of lines) {
-            let tokens = tokenifier(line)
-            // Transpile roam script to javascript
-            let [f, ...args] = tokens
-            args = args.map(x => '"' + x + '"').join(",")
-            var source = `${f}(${args})`
-            res = eval(source)
-            console.log(res)
-        }
-        return outputs
-    }
-}
-function tokenifier(string) {
-    string = string.trim()
-    // let tokens = Path.parsePageRefs(string)
-    let tokens = tokenifier.parseQuotedText(string)
-    tokens = tokenifier.splitTokens(tokens)
-    tokens = tokens.map(x => x instanceof Array ? x[1] : x)
-    return tokens
-}
-tokenifier.parseQuotedText = function (string) {
-    let strings = string instanceof Array ? string : [ string ]
-    let newTokens = []
-    for (string of strings) {
-        if (typeof(string) !== "string") {
-            newTokens.push(string)
-            continue
-        }
-        let matches = string.matchAll(/["']([^"']*)["']/g)
-        let lastEnd = 0
-        for (match of matches) {
-            let thisStart = match.index
-            let thisEnd = thisStart + match[0].length
-            newTokens.push(string.slice(lastEnd, thisStart))
-            newTokens.push(match)
-            lastEnd = thisEnd;
-        }
-        newTokens.push(string.slice(lastEnd))
-    }
-    return newTokens
-    
-}
-tokenifier.splitTokens = function (tokens) {
-    let newTokens = [];
-    for (const token of tokens) {
-        if (typeof (token) === "string") {
-            newTokens = newTokens.concat(token.split(" "))
-        } else {
-            newTokens.push(token)
-        }
-    }
-    return newTokens.filter(x => x.length > 0)
-}
-
-
-///////////////////
-// Roam Terminal //
-///////////////////
-
-siblingDir = "sibling"
-descendantDir = "descendant"
-adjacentBeforeChar = "^"
-adjacentAfterChar = "$"
-childChar = "/"
-parentChar = "."
-offsetChars = [adjacentAfterChar, adjacentBeforeChar, childChar, parentChar]
-pageNameHistory = "RoamTerm_history"
-
-
-function RoamTerm(block) {
-    this.block = block
-    this.uid = this.block.uid
-    this.commandHistoryId = 0
-}
-
-RoamTerm.getFocused = function() {
-    let block = Block.getFocused()
-    if (!block) return null
-    return new RoamTerm(block)
-}
-
-RoamTerm.prototype.isActive = function() {
-    termElement = this.block.getElement()
-    return termElement.querySelector(".rm-block-main").classList.contains("roamTerm")
-}
-RoamTerm.prototype.activate = function() {
-    termElement = this.block.getElement()
-    termElement.querySelector(".rm-block-main").classList.add("roamTerm")
-    promptPrefix = new PromptPrefix("~ %")
-    termElement
-        .querySelector(".controls")
-        .insertAdjacentElement("afterEnd", promptPrefix.toElement())
-}
-RoamTerm.prototype.deactivate = function() {
-    termElement = this.block.getElement()
-    termElement.querySelector(".rm-block-main").classList.remove("roamTerm")
-    termElement.querySelector(".prompt-prefix-area").remove()
-}
-RoamTerm.prototype.execute = async function () {
-    let textarea = this.block.getTextAreaElement()
-    let source = textarea.value
-    commandHistory.addToEnd(source)
-    await this.block.update("")
-    try {
-        rrsh = new RoamResearchShell()
-        rrsh.run(source)
-    } catch (error) {
-        this.block.addChild(error.toString())
-        throw error
-    }
-    // for (const out of outputs) {
-    //     await this.block.addChild(await out)
-    // }
-}
-RoamTerm.prototype.string = function () {
-    return this.block.getTextAreaElement().value
-}
-
-
-function PromptPrefix(string) {
-    this.string = string
-}
-PromptPrefix.prototype.toElement = function () {
-    prefixArea = document.createElement("div")
-    prefixArea.classList.add("prompt-prefix-area")
-    prefixContent = document.createElement("div")
-    prefixContent.classList.add("prompt-prefix-str")
-    prefixStr = document.createElement("span")
-    prefixStr.innerText = this.string
-    prefixContent.appendChild(prefixStr)
-    prefixArea.appendChild(prefixContent)
-    return prefixArea
-}
-
-
-commandHistory = {
-    getFromEnd: function(numFromEnd=-1) {
-        p = new Page(pageNameHistory)
-        string = p.getChildren().slice(numFromEnd)[0].string
-        commandLines = string.split("\n").slice(1)
-        commandLines[commandLines.length - 1] = commandLines.slice(-1)[0].slice(0,-3)
-        return commandLines.join("\n")
-    },
-    addToEnd: function(command) {
-        let p = new Page(pageNameHistory)
-        string = "`".repeat(3)+"plain text" + "\n" + command+"`".repeat(3)
-        p.appendChild(string)
-    }
-}
-
-
-if (typeof document !== "undefined") {
-    document.onkeydown = function (e) {
-        if (e.key === "Backspace") {
-            let roamTerm = RoamTerm.getFocused()
-            if (roamTerm !== null && roamTerm.isActive() && !roamTerm.string()) {
-                roamTerm.deactivate()
-            }
-        }
-        if (e.ctrlKey && e.metaKey && e.key == "Enter") {
-            let b = Block.getFocused()
-            let roamTerm = new RoamTerm(b)
-            if (roamTerm.isActive()) {
-                if (roamTerm.string()) {
-                    roamTerm.execute()
-                    roamTerm.commandHistoryId = 0
-                } else {
-                    roamTerm.deactivate()
-                }
-            } else {
-                roamTerm.activate()
-            }
-        }
-        if (e.ctrlKey && e.metaKey && ["ArrowUp", "ArrowDown"].includes(e.key)) {
-            let b = Block.getFocused()
-            let roamTerm = new RoamTerm(b)
-            if (roamTerm.isActive()) {
-                if (e.key == "ArrowUp") {
-                    roamTerm.commandHistoryId = roamTerm.commandHistoryId - 1
-                } else {
-                    roamTerm.commandHistoryId = roamTerm.commandHistoryId >= -1 ? -1 : roamTerm.commandHistoryId + 1
-                }
-                oldCommand = commandHistory.getFromEnd(roamTerm.commandHistoryId)
-                roamTerm.block.update(oldCommand)
-            }
-
-        }
-    };
-}
-
+module.exports = { Block, Page, Roam, mv, cp, ln, rm, mk, ex, zm, ls, lk, echo, cat }
