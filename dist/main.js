@@ -1,4 +1,4 @@
-var roam;
+var roamsh;
 /******/ (() => { // webpackBootstrap
 /******/ 	var __webpack_modules__ = ({
 
@@ -9,10 +9,10 @@ let { Block, Page, Location } = __webpack_require__(304);
 let graph = __webpack_require__(304);
 
 
-function locationFromSelector(selector) {
-    var res = graph.querySelector(selector)
+function locationFromPath(path) {
+    var res = graph.getByPath(path)
     if (res instanceof Page) {
-        throw `Destination can't be a page: ${selector}`
+        throw `Destination can't be a page: ${path}`
     } else if (res instanceof Block) {
         return new Location(res.getParent().uid, res.getOrder())
     } else {
@@ -20,10 +20,10 @@ function locationFromSelector(selector) {
     }
 }
 
-function blockFromSelector(selector) {
-    var res = graph.querySelector(selector) 
+function blockFromPath(path) {
+    var res = graph.getByPath(path) 
     if (!(res instanceof Block)) {
-        throw `Not a block: ${selector}`
+        throw `Not a block: ${path}`
     }
     return res
 }
@@ -31,57 +31,57 @@ function blockFromSelector(selector) {
 // Commands
 
 async function createBlock(string, dst="") {
-    let dstLoc = locationFromSelector(dst)
+    let dstLoc = locationFromPath(dst)
     return Block.create(string, dstLoc)
 }
 
 async function deleteBlock(src) {
-    let block = blockFromSelector(src)
+    let block = blockFromPath(src)
     return block.delete()
 }
 
 async function moveBlock(src, dst="") {
-    let srcBlock = blockFromSelector(src)
-    let dstLoc = locationFromSelector(dst)
+    let srcBlock = blockFromPath(src)
+    let dstLoc = locationFromPath(dst)
     return srcBlock.move(dstLoc)
 }
 
 async function copyBlock(src, dst="") {
-    let srcBlock = blockFromSelector(src)
-    let dstLoc = locationFromSelector(dst)
+    let srcBlock = blockFromPath(src)
+    let dstLoc = locationFromPath(dst)
     return Block.create(srcBlock.string, dstLoc)
 }
 
 async function refBlock(src, dst="") {
-    let srcBlock = blockFromSelector(src)
-    let dstLoc = locationFromSelector(dst)
+    let srcBlock = blockFromPath(src)
+    let dstLoc = locationFromPath(dst)
     return Block.create(srcBlock.getRef(), dstLoc)
 }
 
 async function toggleExpandBlock(src) {
-    let block = blockFromSelector(src)
+    let block = blockFromPath(src)
     return block.toggleExpand()
 }
 
 async function zoomBlock(src) {
-    let block = blockFromSelector(src)
+    let block = blockFromPath(src)
     return block.zoom()
 }
 
 async function echo(string, dst="") {
-    let dstBlock = blockFromSelector(dst)
+    let dstBlock = blockFromPath(dst)
     return dstBlock.addChild(string)
 }
 
 async function cat(src, dst="") {
-    let block = blockFromSelector(src)
-    let dstBlock = blockFromSelector(dst)
+    let block = blockFromPath(src)
+    let dstBlock = blockFromPath(dst)
     return dstBlock.addChild(block.string)
 }
 
 async function listChildren(src, dst="") {
-    let srcBlock = blockFromSelector(src)
-    let dstBlock = blockFromSelector(dst)
+    let srcBlock = blockFromPath(src)
+    let dstBlock = blockFromPath(dst)
     let children = srcBlock.getChildren()
     for (const child of children) {
         await dstBlock.appendChild(child.string)
@@ -89,8 +89,8 @@ async function listChildren(src, dst="") {
 }
 
 async function linkChildren(src, dst="") {
-    let srcBlock = blockFromSelector(src)
-    let dstBlock = blockFromSelector(dst)
+    let srcBlock = blockFromPath(src)
+    let dstBlock = blockFromPath(dst)
     let children = srcBlock.getChildren()
     for (const child of children) {
         await dstBlock.appendChild(child.getRef())
@@ -112,10 +112,10 @@ module.exports = { mv, cp, ln, rm, mk, ex, zm, ls, lk, echo, cat }
 
 /***/ }),
 
-/***/ 304:
+/***/ 895:
 /***/ ((module, __unused_webpack_exports, __webpack_require__) => {
 
-var { Selector } = __webpack_require__(778) 
+let { isBlockRef, isPageRef, isBlockUid } = __webpack_require__(706)
 
 
 function Location(parentUid, order) {
@@ -243,7 +243,7 @@ Block.prototype = {
                 [?e :block/uid "${this.uid}"]
                 [?e :block/refs ?r]
         ]`)
-        return ids.map(id => roam.getById(id))
+        return ids.map(id => getById(id))
     },
     getPageRefs: function() {
         let ids = window.roamAlphaAPI.q(`[
@@ -253,7 +253,7 @@ Block.prototype = {
                 [?e :block/refs ?r]
                 [?r :node/title]
         ]`)
-        return ids.map(id => roam.getById(id))
+        return ids.map(id => getById(id))
     },
     getBlockRefs: function() {
         let ids = window.roamAlphaAPI.q(`[
@@ -263,7 +263,7 @@ Block.prototype = {
                 [?e :block/refs ?r]
                 [?r :block/string]
         ]`)
-        return ids.map(id => roam.getById(id))
+        return ids.map(id => getById(id))
     },
     getChildren: function () {
         let uids = window.roamAlphaAPI.q(`[
@@ -288,7 +288,7 @@ Block.prototype = {
                 [?e :block/parents ?p]
         ]`)
         if (sorted) parents = sortParents(parents)
-        return parents.map(obj => Roam.getById(obj.id))
+        return parents.map(obj => getById(obj.id))
     },
     getSiblingAbove: function () {
         return this.getSiblingAdjacent(-1)
@@ -406,113 +406,7 @@ Page.prototype = Object.create(Block.prototype)
 Page.prototype.constructor = Page;
 
 
-function LocationNotFound(message) {
-    instance = new Error(message);
-    instance.name = 'LocationNotFound';
-    Object.setPrototypeOf(instance, Object.getPrototypeOf(this));
-    if (Error.captureStackTrace) {
-        Error.captureStackTrace(instance, LocationNotFound);
-      }
-    return instance;
-}
-LocationNotFound.prototype = Object.create(Error.prototype)
-LocationNotFound.prototype.constructor = LocationNotFound
 
-
-function SelectorInterpreter(selector) {
-    if (!(selector instanceof Selector)) {
-        selector = new Selector(selector)
-    }
-    this.selector = selector
-}
-SelectorInterpreter.prototype.error = function(message, token) {
-    if (token) {
-        string = this.selector.string
-        pointer = " ".repeat(token.index) + "^".repeat(token.lexeme.length)
-        message += "\n\n" + string + "\n" + pointer
-    }
-    throw LocationNotFound(message)
-}
-SelectorInterpreter.prototype.evaluate = function() {
-    // Get starting object
-    var node;
-    switch (this.selector.start.type) {
-        case Selector.START_TYPE.ROOT:
-            throw new LocationNotFound(`No support for selectors starting at ${selector.start} yet :(`);
-        case Selector.START_TYPE.PARENT:
-            node = Block.getFocused()
-            for (var i = 0; i < this.selector.start.length; i++) {
-                node = block.getParent();
-            }
-            break;
-        case Selector.START_TYPE.FOCUSED:
-            node = Block.getFocused();
-            break;
-        case Selector.START_TYPE.PAGE:
-            node = new Page(this.selector.start.lexeme);
-            break;
-        case Selector.START_TYPE.BLOCK:
-            node = new Block(this.selector.start.lexeme);
-            break;
-        default:
-            throw new LocationNotFound(`Invalid selector start: ${this.selector.start}`);
-    }
-
-    // Traverse path
-    for (var searchString of this.selector.path) {
-        let res = node.getChildren().filter(({ string }) => string === searchString)
-        if (res.length === 0) {
-            throw new LocationNotFound(`"${searchString}" doesn't match any children of ${node.uid}`)
-        }
-        node = res[0]
-    }
-
-    // Traverse offset
-    var location;
-    for (var offset of this.selector.offset) {
-        if (location) {
-            throw `Can't apply offset once selector reaches `+
-                  `new location: ${offset.lexeme} at index ${offset.index}`
-        }
-        switch (offset.type) {
-            case Selector.OFFSET_TYPE.SIBLING:
-                if (node instanceof Page) {
-                    this.error("Can't select a sibling of a Page", offset)
-                }
-                let order = node.getOrder() + offset.value
-                let siblings = node.getSiblings()
-                if (order < 0) {
-                    location = new Location(node.getParent().uid, 0)
-                } else if (order < siblings.length) {
-                    node = siblings[order]
-                } else if (order >= siblings.length) {
-                    location = new Location(node.getParent().uid, siblings.length)
-                }    
-                break;
-            case Selector.OFFSET_TYPE.CHILD:
-                let childNum = offset.value
-                let children = node.getChildren()
-                if (children.length === 0) {
-                    if (childNum >= 1) {
-                        this.error('Child selector index must be <=0 when node has no children', token);
-                    } else {
-                        location = new Location(node.uid, 0)
-                    }
-                } else if (childNum < 0) {
-                    node = children.slice(childNum)[0]
-                } else if (childNum < children.length) {
-                    node = children[childNum]
-                } else {
-                    location = new Location(node.getParent().uid, children.length)
-                }
-                break;
-            default:
-                throw `Invalid offset type: ${offsetToken.type}`
-        }
-    }
-
-    return location || node
-}
 
 // Helpers
 
@@ -531,32 +425,6 @@ function block(o) {
     }
 }
 
-function getDateSuffix(d) {
-    lastDigit = d % 10
-    if (d >= 11 && d <= 13) {
-        return "th"
-    } else if (lastDigit === 1) {
-        return "st"
-    } else if (lastDigit === 2) {
-        return "nd"
-    } else if (lastDigit === 3) {
-        return "rd"
-    } else {
-        return "th"
-    }
-}
-
-function getRoamDate(d = new Date()) {
-    const monthNames = ["January", "February", "March", "April", "May", "June",
-        "July", "August", "September", "October", "November", "December"
-    ];
-    month = monthNames[d.getMonth()]
-    day = d.getDate()
-    suffix = getDateSuffix(day)
-    year = d.getFullYear()
-    return `${month} ${day}${suffix}, ${year}`
-}
-
 function blockRefToUid(blockRef) {
     return blockRef.slice(2, -2)
 }
@@ -565,20 +433,8 @@ function blockUidToRef(blockUid) {
     return `((${blockUid}))`
 }
 
-function isBlockUid(x) {
-    return typeof (x) === "string" && (x.match(/^[\w\d\-_]{9}$/) !== null || x.match(/\d\d\-\d\d-\d\d\d\d/) !== null) // TODO: finish
-}
-
-function isBlockRef(x) {
-    return typeof (x) === "string" && x.slice(0, 2) === "((" && x.slice(-2) === "))"
-}
-
 function pageRefToTitle(pageRef) {
     return pageRef.slice(2, -2)
-}
-
-function isPageRef(x) {
-    return typeof (x) === "string" && x.slice(0, 2) === "[[" && x.slice(-2) === "]]"
 }
 
 function isPageTitle(string) {
@@ -641,34 +497,95 @@ function getByUid(uid) {
     }
 }
 
-function querySelector(selectorString) {
-    selector = new Selector(selectorString)
-    interpreter = new SelectorInterpreter(selector)
-    return interpreter.evaluate()
+
+
+
+module.exports = { Block, Page, Location, getById, getByUid }
+
+/***/ }),
+
+/***/ 984:
+/***/ ((module) => {
+
+
+
+function getDateSuffix(d) {
+    lastDigit = d % 10
+    if (d >= 11 && d <= 13) {
+        return "th"
+    } else if (lastDigit === 1) {
+        return "st"
+    } else if (lastDigit === 2) {
+        return "nd"
+    } else if (lastDigit === 3) {
+        return "rd"
+    } else {
+        return "th"
+    }
 }
 
 
-module.exports = { Block, Page, Location, getById, getByUid, querySelector}
+function toRoamString(d = new Date()) {
+    const monthNames = [
+        "January", "February", "March", "April", "May", "June", "July", 
+        "August", "September", "October", "November", "December"
+    ];
+    month = monthNames[d.getMonth()]
+    day = d.getDate()
+    suffix = getDateSuffix(day)
+    year = d.getFullYear()
+    return `${month} ${day}${suffix}, ${year}`
+}
+
+
+module.exports = { toRoamString }
+
+/***/ }),
+
+/***/ 304:
+/***/ ((module, __unused_webpack_exports, __webpack_require__) => {
+
+var { Block, Page, Location, getById, getByUid } = __webpack_require__(895) 
+var { Path } = __webpack_require__(61) 
+
+
+function getByPath(pathString) {
+    let path = new Path(pathString)
+    return path.evaluate()
+}
+
+function get(string) {
+    for (let f of [(s) => new Block(s), (s) => new Page(s), getByPath]) {
+        try {
+            return f(string)
+        } catch (e) {}
+    }
+    throw `${string} isn't a valid internal id, uid, or path`
+}
+
+module.exports = { Block, Page, Location, getById, getByUid, getByPath, get }
 
 /***/ }),
 
 /***/ 138:
 /***/ ((module, __unused_webpack_exports, __webpack_require__) => {
 
-let selector = __webpack_require__(778) 
+let path = __webpack_require__(61) 
 let graph = __webpack_require__(304) 
+let core = __webpack_require__(895) 
 let commands = __webpack_require__(742) 
 let terminal = __webpack_require__(170) 
+let date = __webpack_require__(984) 
 
-module.exports = { selector, graph, commands, terminal }
+module.exports = { path, graph, commands, terminal, date, core }
 
 /***/ }),
 
-/***/ 778:
+/***/ 61:
 /***/ ((module, __unused_webpack_exports, __webpack_require__) => {
 
 let { isBlockRef, isPageRef, getPageRefAtIndex } = __webpack_require__(706) 
-// let { Block, Page, Location } = require("./graph") 
+let { Block, Page, Location } = __webpack_require__(895) 
 
 ROOT_CHAR = "~"
 PARENT_CHAR = "."
@@ -691,29 +608,29 @@ function Token(type, lexeme, value=null, index=null) {
 }
 
 
-function Selector(string) {
+function Path(string) {
     this.string = string;
-    let parser = new SelectorParser(string)
+    let parser = new PathParser(string)
     let [start, path, offset] = parser.parse()
     this.start = start;
     this.path = path;
     this.offset = offset;
 }
-Selector.START_TYPE = START_TYPE 
-Selector.OFFSET_TYPE = OFFSET_TYPE 
-Selector.prototype = {
-    ...Selector.prototype,
+Path.START_TYPE = START_TYPE 
+Path.OFFSET_TYPE = OFFSET_TYPE 
+Path.prototype = {
+    ...Path.prototype,
     split: function() {
         return [ this.start.lexeme ].concat(path) + this.offset.map(o => o.lexeme).join("")
     },
-    // evaluate: function() {
-    //     interpreter = new SelectorInterpreter(this)
-    //     return interpreter.evaluate()
-    // }
+    evaluate: function() {
+        interpreter = new PathInterpreter(this)
+        return interpreter.evaluate()
+    }
 }
 
 
-function SelectorParser(string) {
+function PathParser(string) {
     this.string = string;
     this.current = 0;
     this.end = this.string.length;
@@ -721,8 +638,8 @@ function SelectorParser(string) {
     this.offset = [];
     this.path = [];
 }
-SelectorParser.prototype = {
-    ...SelectorParser.prototype,
+PathParser.prototype = {
+    ...PathParser.prototype,
     parse: function() {
         this.consumeOffset()
         this.consumeRootAndPath()
@@ -816,8 +733,116 @@ SelectorParser.prototype = {
 }
 
 
+function LocationNotFound(message) {
+    instance = new Error(message);
+    instance.name = 'LocationNotFound';
+    Object.setPrototypeOf(instance, Object.getPrototypeOf(this));
+    if (Error.captureStackTrace) {
+        Error.captureStackTrace(instance, LocationNotFound);
+      }
+    return instance;
+}
+LocationNotFound.prototype = Object.create(Error.prototype)
+LocationNotFound.prototype.constructor = LocationNotFound
 
-module.exports = { Selector }
+
+function PathInterpreter(path) {
+    if (!(path instanceof Path)) {
+        path = new Path(path)
+    }
+    this.path = path
+}
+PathInterpreter.prototype.error = function(message, token) {
+    if (token) {
+        string = this.path.string
+        pointer = " ".repeat(token.index) + "^".repeat(token.lexeme.length)
+        message += "\n\n" + string + "\n" + pointer
+    }
+    throw LocationNotFound(message)
+}
+PathInterpreter.prototype.evaluate = function() {
+    // Get starting object
+    var node;
+    switch (this.path.start.type) {
+        case Path.START_TYPE.ROOT:
+            throw new LocationNotFound(`No support for paths starting at ${path.start} yet :(`);
+        case Path.START_TYPE.PARENT:
+            node = Block.getFocused()
+            for (var i = 0; i < this.path.start.length; i++) {
+                node = block.getParent();
+            }
+            break;
+        case Path.START_TYPE.FOCUSED:
+            node = Block.getFocused();
+            break;
+        case Path.START_TYPE.PAGE:
+            node = new Page(this.path.start.lexeme);
+            break;
+        case Path.START_TYPE.BLOCK:
+            node = new Block(this.path.start.lexeme);
+            break;
+        default:
+            throw new LocationNotFound(`Invalid path start: ${this.path.start}`);
+    }
+
+    // Traverse path
+    for (var searchString of this.path.path) {
+        let res = node.getChildren().filter(({ string }) => string === searchString)
+        if (res.length === 0) {
+            throw new LocationNotFound(`"${searchString}" doesn't match any children of ${node.uid}`)
+        }
+        node = res[0]
+    }
+
+    // Traverse offset
+    var location;
+    for (var offset of this.path.offset) {
+        if (location) {
+            throw `Can't apply offset once path reaches `+
+                  `new location: ${offset.lexeme} at index ${offset.index}`
+        }
+        switch (offset.type) {
+            case Path.OFFSET_TYPE.SIBLING:
+                if (node instanceof Page) {
+                    this.error("Can't select a sibling of a Page", offset)
+                }
+                let order = node.getOrder() + offset.value
+                let siblings = node.getSiblings()
+                if (order < 0) {
+                    location = new Location(node.getParent().uid, 0)
+                } else if (order < siblings.length) {
+                    node = siblings[order]
+                } else if (order >= siblings.length) {
+                    location = new Location(node.getParent().uid, siblings.length)
+                }    
+                break;
+            case Path.OFFSET_TYPE.CHILD:
+                let childNum = offset.value
+                let children = node.getChildren()
+                if (children.length === 0) {
+                    if (childNum >= 1) {
+                        this.error('Child path index must be <=0 when node has no children', token);
+                    } else {
+                        location = new Location(node.uid, 0)
+                    }
+                } else if (childNum < 0) {
+                    node = children.slice(childNum)[0]
+                } else if (childNum < children.length) {
+                    node = children[childNum]
+                } else {
+                    location = new Location(node.getParent().uid, children.length)
+                }
+                break;
+            default:
+                throw `Invalid offset type: ${offsetToken.type}`
+        }
+    }
+
+    return location || node
+}
+
+
+module.exports = { Path }
 
 /***/ }),
 
@@ -1564,7 +1589,7 @@ module.exports = { setUpListener }
 /******/ 	// startup
 /******/ 	// Load entry module and return exports
 /******/ 	var __webpack_exports__ = __webpack_require__(__webpack_require__.s = 138);
-/******/ 	roam = __webpack_exports__;
+/******/ 	roamsh = __webpack_exports__;
 /******/ 	
 /******/ })()
 ;
