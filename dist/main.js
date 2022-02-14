@@ -1,17 +1,535 @@
+var roam;
 /******/ (() => { // webpackBootstrap
 /******/ 	var __webpack_modules__ = ({
 
-/***/ 9:
-/***/ ((__unused_webpack_module, __unused_webpack_exports, __webpack_require__) => {
+/***/ 742:
+/***/ ((module, __unused_webpack_exports, __webpack_require__) => {
 
-const { RoamResearchShell, Scanner, Parser } = __webpack_require__(859);
+let { Block, Page, Location } = __webpack_require__(304);
+let graph = __webpack_require__(304);
 
 
-///////////////
-// Roam Core //
-///////////////
+function locationFromSelector(selector) {
+    var res = graph.querySelector(selector)
+    if (res instanceof Page) {
+        throw `Destination can't be a page: ${selector}`
+    } else if (res instanceof Block) {
+        return new Location(res.getParent().uid, res.getOrder())
+    } else {
+        return res
+    }
+}
+
+function blockFromSelector(selector) {
+    var res = graph.querySelector(selector) 
+    if (!(res instanceof Block)) {
+        throw `Not a block: ${selector}`
+    }
+    return res
+}
+
+// Commands
+
+async function createBlock(string, dst="") {
+    let dstLoc = locationFromSelector(dst)
+    return Block.create(string, dstLoc)
+}
+
+async function deleteBlock(src) {
+    let block = blockFromSelector(src)
+    return block.delete()
+}
+
+async function moveBlock(src, dst="") {
+    let srcBlock = blockFromSelector(src)
+    let dstLoc = locationFromSelector(dst)
+    return srcBlock.move(dstLoc)
+}
+
+async function copyBlock(src, dst="") {
+    let srcBlock = blockFromSelector(src)
+    let dstLoc = locationFromSelector(dst)
+    return Block.create(srcBlock.string, dstLoc)
+}
+
+async function refBlock(src, dst="") {
+    let srcBlock = blockFromSelector(src)
+    let dstLoc = locationFromSelector(dst)
+    return Block.create(srcBlock.getRef(), dstLoc)
+}
+
+async function toggleExpandBlock(src) {
+    let block = blockFromSelector(src)
+    return block.toggleExpand()
+}
+
+async function zoomBlock(src) {
+    let block = blockFromSelector(src)
+    return block.zoom()
+}
+
+async function echo(string, dst="") {
+    let dstBlock = blockFromSelector(dst)
+    return dstBlock.addChild(string)
+}
+
+async function cat(src, dst="") {
+    let block = blockFromSelector(src)
+    let dstBlock = blockFromSelector(dst)
+    return dstBlock.addChild(block.string)
+}
+
+async function listChildren(src, dst="") {
+    let srcBlock = blockFromSelector(src)
+    let dstBlock = blockFromSelector(dst)
+    let children = srcBlock.getChildren()
+    for (const child of children) {
+        await dstBlock.appendChild(child.string)
+    }
+}
+
+async function linkChildren(src, dst="") {
+    let srcBlock = blockFromSelector(src)
+    let dstBlock = blockFromSelector(dst)
+    let children = srcBlock.getChildren()
+    for (const child of children) {
+        await dstBlock.appendChild(child.getRef())
+    }
+}
+
+// Aliases
+mv = moveBlock
+cp = copyBlock
+ln = refBlock
+rm = deleteBlock
+mk = createBlock
+ex = toggleExpandBlock
+zm = zoomBlock 
+ls = listChildren
+lk = linkChildren
+
+module.exports = { mv, cp, ln, rm, mk, ex, zm, ls, lk, echo, cat }
+
+/***/ }),
+
+/***/ 304:
+/***/ ((module, __unused_webpack_exports, __webpack_require__) => {
+
+var { Selector } = __webpack_require__(778) 
+
+
+function Location(parentUid, order) {
+    this.parentUid = parentUid
+    this.order = order
+}
+
+
+function Block(idx) {
+    if (idx instanceof Block) {
+        this.uid = idx.uid
+    } else if (typeof(idx) === "number") {
+        this.uid = window.roamAlphaAPI.q(`[
+            :find ?uid .
+            :where
+                [${idx} :block/uid ?uid]
+        ]`)
+    } else if (typeof(idx) === "string") {
+        if (isBlockRef(idx)) {
+            this.uid = idx.slice(2, -2)
+        } else if (isBlockUid(idx)) {
+            this.uid = idx
+        } else if (idx === ".") {
+            this.uid = roamAlphaAPI.ui.getFocusedBlock()["block-uid"]
+        }
+    }
+    if (!this.uid) throw `${idx} isn't a valid id, uid, or block`
+    let blockAttrs = window.roamAlphaAPI.q(`[
+        :find (pull ?e [*]) .
+        :where
+            [?e :block/uid "${this.uid}"]
+    ]`)
+    for (const [attr, val] of Object.entries(blockAttrs)) {
+        this[attr] = val;
+    }
+}
+Block.fromId = function (id) {
+    let uid = window.roamAlphaAPI.q(`[
+      :find ?uid .
+      :where
+         [${id} :block/uid ?uid]
+    ]`)
+    return new Block(uid)
+}
+Block.fromLocation = function (location) {
+    parent = new Block(location.parentUid)
+    return parent.getChildren()[location.order]
+}
+Block.create = async function (string = "", location=null) {
+    if (!location) {
+        let block = Block.getFocusedBlock()
+        location = new Location(block.uid, 0)
+    }
+    // Create block
+    let uid = window.roamAlphaAPI.util.generateUID();
+    await window.roamAlphaAPI.createBlock(
+        {
+            "location": { "parent-uid": location.parentUid, "order": location.order },
+            "block": { "string": string, "uid": uid }
+        }
+    );
+    return new Block(uid)
+}
+Block.getFocused = function() {
+    let res = roamAlphaAPI.ui.getFocusedBlock()
+    if (!res) return null
+    return new Block(res["block-uid"])
+}
+Block.prototype = {
+    ...Block.prototype,
+    update: async function (string) {
+        res = await window.roamAlphaAPI
+            .updateBlock(
+                { "block": { "uid": this.uid, "string": string } })
+        this.string = string
+        return res
+    },
+    move: async function (location) {
+        await window.roamAlphaAPI.moveBlock(
+            {
+                "location": { "parent-uid": location.parentUid, "order": location.order },
+                "block": { "uid": this.uid }
+            }
+         );
+    },
+    delete: async function () {
+        await window.roamAlphaAPI.deleteBlock(
+            {
+                "block": { "uid": this.uid }
+            }
+         );
+    },
+    toggleExpand: async function () {
+        await window.roamAlphaAPI.updateBlock(
+            {"block": { "uid": this.uid, "open": !this.open }}
+         );
+    },
+    zoom: async function () {
+        await window.roamAlphaAPI.ui.mainWindow.openBlock(
+            {block: {uid: this.uid}}
+        )
+    },
+    getString: function() {
+        let string = window.roamAlphaAPI.q(`[
+            :find ?s .
+            :where
+                [?e :block/uid "${this.uid}"]
+                [?e :block/string ?s]
+        ]`)
+        return string
+    },
+    getOrder: function() {
+        let order = window.roamAlphaAPI.q(`[
+            :find ?o .
+            :where
+                [?e :block/uid "${this.uid}"]
+                [?e :block/order ?o]
+        ]`)
+        return order
+    }, 
+    getRefs: function() {
+        let ids = window.roamAlphaAPI.q(`[
+            :find [ ?r ... ]
+            :where
+                [?e :block/uid "${this.uid}"]
+                [?e :block/refs ?r]
+        ]`)
+        return ids.map(id => roam.getById(id))
+    },
+    getPageRefs: function() {
+        let ids = window.roamAlphaAPI.q(`[
+            :find [ ?r ... ]
+            :where
+                [?e :block/uid "${this.uid}"]
+                [?e :block/refs ?r]
+                [?r :node/title]
+        ]`)
+        return ids.map(id => roam.getById(id))
+    },
+    getBlockRefs: function() {
+        let ids = window.roamAlphaAPI.q(`[
+            :find [ ?r ... ]
+            :where
+                [?e :block/uid "${this.uid}"]
+                [?e :block/refs ?r]
+                [?r :block/string]
+        ]`)
+        return ids.map(id => roam.getById(id))
+    },
+    getChildren: function () {
+        let uids = window.roamAlphaAPI.q(`[
+                :find [?uid ...]
+                :where
+                    [?e :block/uid "${this.uid}"]
+                    [?e :block/children ?c]
+                    [?c :block/uid ?uid]
+            ]`)
+        return uids
+            .map((uid) => new Block(uid))
+            .sort((x,y) => x.order - y.order)
+    },
+    getParent: function () {
+        return this.getParents().slice(-1)[0]
+    },
+    getParents: function (sorted=true) {
+        let parents = window.roamAlphaAPI.q(`[
+            :find [(pull ?p [*]) ...]
+            :where
+                [?e :block/uid "${this.uid}"]
+                [?e :block/parents ?p]
+        ]`)
+        if (sorted) parents = sortParents(parents)
+        return parents.map(obj => Roam.getById(obj.id))
+    },
+    getSiblingAbove: function () {
+        return this.getSiblingAdjacent(-1)
+    },
+    getSiblingBelow: function () {
+        return this.getSiblingAdjacent(1)
+    },
+    getSiblingAdjacent: function(offset=1) {
+        res = this.getSiblings().filter(({ order }) => order == this.order + offset)
+        return res[0]
+    },
+    getSiblings: function () {
+        let parent = this.getParent()
+        return parent.getChildren()
+    },
+    getRef: function () {
+        return `((${this.uid}))`
+    },
+    getLocation: function () {
+        let parent = this.getParent()
+        return new Location(parent.uid, this.order)
+    },
+    addChild: async function (child, idx = 0) {
+        if (child instanceof Block) {
+            await window.roamAlphaAPI.moveBlock(
+                {
+                    "location": { "parent-uid": this.uid, "order": idx },
+                    "block": { "uid": child.uid }
+                }
+            );
+            return new Block(block.uid)
+        } else {
+            return Block.create(child.toString(), new Location(this.uid, idx))
+        }
+    },
+    appendChild: async function (blockOrString) {
+        let idx = (await this.getChildren() || []).length
+        return this.addChild(blockOrString, idx)
+    },
+    getElement: function () {
+        blockContentElement = document.querySelector(`[id$="${this.uid}"]:not(.rm-inline-reference [id$="${this.uid}"])`)
+        blockContainerElement = blockContentElement.parentElement
+        while (!blockContainerElement.classList.contains("roam-block-container")) {
+            blockContainerElement = blockContainerElement.parentElement
+        }
+        return blockContainerElement
+    },
+    getTextAreaElement: function () {
+        return this.getElement().querySelector("textarea")
+    },
+    getRelative: function (offset) {
+        if (offset.direction === siblingDir) {
+            return this.getSiblingAdjacent(offset.magnitude)
+        } else if (offset.direction == descendantDir ) {
+            if (offset.magnitude >= 0) {
+                return this.getChildren()[offset.magnitude] 
+            } else {
+                return this.getParents()[-offset.magnitude]
+            }
+        }
+    },
+    createDate: function() {
+        let timestamp = roamAlphaAPI.q(`[
+            :find ?t .
+            :where
+                [?e :block/uid "${this.uid}"]
+                [?e :create/time ?t]
+        ]`)
+        return new Date(timestamp)
+    }
+}
+
+
+function Page(idx) {
+    if (idx instanceof Page) {
+        // Handle idx as page object
+        this.uid = idx.uid
+        return
+    } else if (typeof(idx) === "number") {
+        // Handle idx as internal id
+        let obj = window.roamAlphaAPI.pull("[*]", idx)
+        if (obj[":node/title"] === undefined) {
+            throw "id ${idx} exists but isn't a Page object"
+        }
+        this.uid = obj[":block/uid"]
+        return
+    } else if (typeof(idx) === "string") {
+        // Handle idx as a page title
+        let title = isPageRef(idx) ? pageRefToTitle(idx) : idx
+        let uid = window.roamAlphaAPI.q(`[
+            :find ?uid .
+            :where
+                [?e :node/title "${title}"]
+                [?e :block/uid ?uid]
+        ]`)
+        if (uid !== null) {
+            this.uid = uid
+            return
+        } 
+        // Handle idx as uid
+        let id = window.roamAlphaAPI.q(`[
+            :find ?e .
+            :where
+                [?e :block/uid "${idx}"]
+                [?e :node/title]
+        ]`)
+        if (id) {
+            this.uid = idx
+            return
+        }
+    }
+    throw `identifier ${idx} is invalid for a Page`
+}
+Page.prototype = Object.create(Block.prototype)
+Page.prototype.constructor = Page;
+
+
+function LocationNotFound(message) {
+    instance = new Error(message);
+    instance.name = 'LocationNotFound';
+    Object.setPrototypeOf(instance, Object.getPrototypeOf(this));
+    if (Error.captureStackTrace) {
+        Error.captureStackTrace(instance, LocationNotFound);
+      }
+    return instance;
+}
+LocationNotFound.prototype = Object.create(Error.prototype)
+LocationNotFound.prototype.constructor = LocationNotFound
+
+
+function SelectorInterpreter(selector) {
+    if (!(selector instanceof Selector)) {
+        selector = new Selector(selector)
+    }
+    this.selector = selector
+}
+SelectorInterpreter.prototype.error = function(message, token) {
+    if (token) {
+        string = this.selector.string
+        pointer = " ".repeat(token.index) + "^".repeat(token.lexeme.length)
+        message += "\n\n" + string + "\n" + pointer
+    }
+    throw LocationNotFound(message)
+}
+SelectorInterpreter.prototype.evaluate = function() {
+    // Get starting object
+    var node;
+    switch (this.selector.start.type) {
+        case Selector.START_TYPE.ROOT:
+            throw new LocationNotFound(`No support for selectors starting at ${selector.start} yet :(`);
+        case Selector.START_TYPE.PARENT:
+            node = Block.getFocused()
+            for (var i = 0; i < this.selector.start.length; i++) {
+                node = block.getParent();
+            }
+            break;
+        case Selector.START_TYPE.FOCUSED:
+            node = Block.getFocused();
+            break;
+        case Selector.START_TYPE.PAGE:
+            node = new Page(this.selector.start.lexeme);
+            break;
+        case Selector.START_TYPE.BLOCK:
+            node = new Block(this.selector.start.lexeme);
+            break;
+        default:
+            throw new LocationNotFound(`Invalid selector start: ${this.selector.start}`);
+    }
+
+    // Traverse path
+    for (var searchString of this.selector.path) {
+        let res = node.getChildren().filter(({ string }) => string === searchString)
+        if (res.length === 0) {
+            throw new LocationNotFound(`"${searchString}" doesn't match any children of ${node.uid}`)
+        }
+        node = res[0]
+    }
+
+    // Traverse offset
+    var location;
+    for (var offset of this.selector.offset) {
+        if (location) {
+            throw `Can't apply offset once selector reaches `+
+                  `new location: ${offset.lexeme} at index ${offset.index}`
+        }
+        switch (offset.type) {
+            case Selector.OFFSET_TYPE.SIBLING:
+                if (node instanceof Page) {
+                    this.error("Can't select a sibling of a Page", offset)
+                }
+                let order = node.getOrder() + offset.value
+                let siblings = node.getSiblings()
+                if (order < 0) {
+                    location = new Location(node.getParent().uid, 0)
+                } else if (order < siblings.length) {
+                    node = siblings[order]
+                } else if (order >= siblings.length) {
+                    location = new Location(node.getParent().uid, siblings.length)
+                }    
+                break;
+            case Selector.OFFSET_TYPE.CHILD:
+                let childNum = offset.value
+                let children = node.getChildren()
+                if (children.length === 0) {
+                    if (childNum >= 1) {
+                        this.error('Child selector index must be <=0 when node has no children', token);
+                    } else {
+                        location = new Location(node.uid, 0)
+                    }
+                } else if (childNum < 0) {
+                    node = children.slice(childNum)[0]
+                } else if (childNum < children.length) {
+                    node = children[childNum]
+                } else {
+                    location = new Location(node.getParent().uid, children.length)
+                }
+                break;
+            default:
+                throw `Invalid offset type: ${offsetToken.type}`
+        }
+    }
+
+    return location || node
+}
 
 // Helpers
+
+
+function block(o) {
+    if (isBlockUid(o) || o === ".") {
+        return new Block(o)
+    } else if (isBlockRef(o)) {
+        return new Block(blockRefToUid(o))
+    } else if (isPageTitle(o)) {
+        return new Page(o)
+    } else {
+        // assume it's a path
+        let loc = Location.fromPath(o)
+        return Block.fromLocation(loc)
+    }
+}
 
 function getDateSuffix(d) {
     lastDigit = d % 10
@@ -101,890 +619,209 @@ function sortParents(parents) {
     return sortedParents
 }
 
-// Objects
-
-
-function PageRef(string) {
-    this.string = string
-}
-PageRef.prototype.toString = function() {
-    return this.string
-}
-
-function Path(string) {
-    let { root, relPath, modifiers } = Path.parse(string)
-    this.root = root
-    this.relPath = relPath
-    this.modifiers = modifiers
-} 
-
-Path.parse = function(string) {
-    let root, dir, modifiers, tokens
-    [ string, modifiers ] = Path.splitModifiers(string)
-    tokens = Path.parsePageRefs(string)
-    root = tokens[0] instanceof PageRef ? tokens[0].string : tokens[0]
-    tokens = tokens.slice(1)
-    relPath = Path.tokensToRelPath(tokens)
-    return { root, relPath, modifiers }
-}
-
-Path.splitModifiers = function(path) {
-    let modifiers = []
-    let pat = /((\/(\[\d+\])?)|\$|\^)$/
-    let match = path.match(pat) 
-    while (match !== null) {
-        modifiers.push(match[0])
-        path = path.slice(0, match.index)
-        match = path.match(pat) 
-    }
-    modifiers.reverse()
-    return [path, modifiers] 
-}
-
-Path.tokensToRelPath = function(tokens) {
-    // tokens is an array of PageRef objects and strings
-    // e.g. tokens = ["/to/", PageRef("[[something]]"), " else/good", PageRef("[[page]]"), "/end"]
-    let relPath = []
-    let string = ""
-    for (const token of tokens) {
-        if (token instanceof PageRef) {
-            string += token.string
-        } else {
-            for (const c of token) {
-                if (c === "/") {
-                    if (string.length > 0) {
-                        relPath.push(string)
-                        string = ""
-                    }
-                    // do nothing
-                } else {
-                    string += c
-                }
-            }
-        }
-    }
-    if (string.length > 0 ) {
-        relPath.push(string)
-    }
-    return relPath
-}
-
-Path.parsePageRefs = function(string) {
-    pageRefLocs = Path.getPageRefLocations(string)
-    let tokens = []
-    lastEnd = 0
-    for (loc of pageRefLocs) {
-        let thisStart = loc[0]
-        let thisEnd = loc[1]
-        tokens.push(string.slice(lastEnd, thisStart))
-        tokens.push(new PageRef(string.slice(thisStart, thisEnd)))
-        lastEnd = thisEnd;
-    }
-    tokens.push(string.slice(lastEnd))
-    tokens = tokens.filter(x => x !== "")
-    return tokens
-}
-
-Path.getPageRefLocations = function(string) {
-    let bracketCount = 0
-    let pageLocs = []
-    let pageLoc = []
-    let i = 1
-    while (i < string.length) {
-        let token = string.slice(i-1, i+1)
-        if (token === "[[") {
-            bracketCount += 1
-            if (pageLoc.length == 0) {
-                // found start of page ref
-                pageLoc.push(i-1) 
-            }
-            i += 2
-        } else if (token === "]]") {
-            bracketCount -= 1
-            if (bracketCount === 0 && pageLoc.length > 0) {
-                // found end of page ref
-                pageLoc.push(i+1)
-                pageLocs.push(pageLoc)
-                pageLoc = []
-            }
-            i += 2
-        } else {
-            i += 1
-        }
-    }
-    return pageLocs
-}
-
-Path.prototype.unmodified = function() {
-    return [this.root].concat(this.relPath).join("/")
-}
-
-
-
-function Location(parentUid, order) {
-    this.parentUid = parentUid
-    this.order = order
-}
-
-
-Location.fromPath = function(path) {
-    if (!(path instanceof Path)) {
-        path = new Path(path)
-    }
-    if (path.unmodified().length === 0) {
-        var block = Block.getFocused()
+function getById(id) {
+    let obj = window.roamAlphaAPI.pull("[*]", id)
+    if (obj[":node/title"] === undefined) {
+        return new Block(id)
     } else {
-        if (path.root === parentChar) { // TODO this feels hacky
-            var block = Block.getFocused().getParent()
-        } else {
-            try { // assume it's a page title
-                var block = new Page(path.root)
-            } catch {
-                try { // assume it's a block
-                    var block = new Block(path.root)
-                } catch {
-                    throw `"${path.root}" isn't a valid root (page or block)`
-                }
-            }
-        }
-        for (const searchString of path.relPath) {
-            let res = block.getChildren().filter(({ string }) => string === searchString)
-            if (res.length === 0) {
-                throw `"${searchString}" isn't a child of ${block}`
-            }
-            var block = res[0]
-        }
-    }
-    var location = block.getLocation()
-    // Factor in modifiers
-    for (modifier of path.modifiers) {
-        match = modifier.match(/\/(?:\[(\d+)\])?/)
-        if (match) {
-            idx = match[1] || 0
-            location.parentUid = Block.fromLocation(location).uid
-            location.order = idx
-        } else if ( modifier === "^" ) {
-            location.order -= 1
-        } else if (modifier == "$" ) {
-            location.order += 1
-        } else {
-            throw `"Invalid modifier: "${modifier}"`
-        }
-    }
-    return location
-}
-
-// Location.fromPath = function(path) {
-//     let [blockPath, offsetString] = splitOffset(path);
-//     // Get block at absolute path location
-//     if (!blockPath) {
-//         var block = Block.getFocused()
-//     } else {
-//         let [first, ...theRest] = blockPath.split("/").filter(x => x.length > 0);
-//         if (first === parentChar) { // TODO this feels hacky
-//             var block = Block.getFocused().getParent()
-//         } else {
-//             try { // assume it's a page title
-//                 var block = new Page(first)
-//             } catch {
-//                 try { // assume it's a block
-//                     var block = new Block(first)
-//                 } catch {
-//                     throw `"${first}" in path isn't a valid page or block`
-//                 }
-//             }
-//         }
-//         for (const searchString of theRest) {
-//             let res = block.getChildren().filter(({ string }) => string === searchString)
-//             if (res.length === 0) {
-//                 throw `"${searchString}" isn't a child of ${block}`
-//             }
-//             var block = res[0]
-//         }
-
-//     }
-//     // Factor in offset
-//     let offset = Offset.fromString(offsetString)
-//     if (!offset) {
-//         return new Location(block.getParent().uid, block.order)
-//     } else if (offset.direction === siblingDir ) {
-//         return new Location(block.getParent().uid, block.order + offset.magnitude)
-//     } else if (offset.direction === descendantDir ) {
-//         if (offset.magnitude >= 0) {
-//             return new Location(block.uid, offset.magnitude)
-//         } else {
-//             ancestor = block.getParents().slice(offset.magnitude)[0]
-//             return ancestor.getLocation()
-//         }
-//     } else {
-//         throw `invalid offset: ${offset}`
-//     }
-// }
-
-/**
- * Relative offset
- * @param {*} direction 
- * @param {*} magnitude 
- */
-function Offset(direction, magnitude) {
-    this.direction = direction
-    this.magnitude = magnitude
-}
-Offset.fromString = function(string) {
-    // TODO: support homogenous offset chars
-    if (string[0]===adjacentBeforeChar) {
-        return new this(siblingDir, -1*string.length)
-    } else if (string[0]===adjacentAfterChar) {
-        return new this(siblingDir, +1*string.length)
-    } else if (string[0]===parentChar) {
-        return new this(descendantDir, -1*string.length)
-    } else if (string[0]===childChar) {
-        return new this(descendantDir, +1*(string.length - 1))
-    } else {
-        return null
-    }
-}
-function splitOffset(path) {
-    pat = new RegExp(`[${offsetChars.map(x => "\\"+x).join("")}]+$`)
-    match = path.match(pat)
-    if (match) {
-        return [path.slice(0, match.index), match[0]]
-    } else {
-        return [path, ""]
+        return new Page(id)
     }
 }
 
-
-var roam = {
-    getById: function(id) {
-        let obj = window.roamAlphaAPI.pull("[*]", id)
-        if (obj[":node/title"] === undefined) {
-            return new Block(id)
-        } else {
-            return new Page(id)
-        }
-    },
-    getByUid: function(uid) {
-        let obj = window.roamAlphaAPI.q(`[
-            :find (pull ?e [*]) .
-            :where
-                [?e :block/uid "${uid}"]
-        ]`)
-        if (obj["title"] === undefined) {
-            return new Block(obj["uid"])
-        } else {
-            return new Page(obj["uid"])
-        }
-    }
-}
-
-
-function Block(idx) {
-    if (idx instanceof Block) {
-        this.uid = idx.uid
-    } else if (typeof(idx) === "number") {
-        this.uid = window.roamAlphaAPI.q(`[
-            :find ?uid .
-            :where
-                [${idx} :block/uid ?uid]
-        ]`)
-    } else if (typeof(idx) === "string") {
-        if (isBlockRef(idx)) {
-            this.uid = idx.slice(2, -2)
-        } else if (isBlockUid(idx)) {
-            this.uid = idx
-        } else if (idx === ".") {
-            this.uid = roamAlphaAPI.ui.getFocusedBlock()["block-uid"]
-        }
-    }
-    if (!this.uid) throw `${idx} isn't a valid id, uid, or block`
-    let blockAttrs = window.roamAlphaAPI.q(`[
+function getByUid(uid) {
+    let obj = window.roamAlphaAPI.q(`[
         :find (pull ?e [*]) .
         :where
-            [?e :block/uid "${this.uid}"]
+            [?e :block/uid "${uid}"]
     ]`)
-    for (const [attr, val] of Object.entries(blockAttrs)) {
-        this[attr] = val;
-    }
-}
-
-Block.fromId = function (id) {
-    let uid = window.roamAlphaAPI.q(`[
-      :find ?uid .
-      :where
-         [${id} :block/uid ?uid]
-    ]`)
-    return new Block(uid)
-}
-
-// TODO: this should take uid and order as args instead
-Block.fromLocation = function (location) {
-    parent = new Block(location.parentUid)
-    return parent.getChildren()[location.order]
-}
-
-Block.fromPath = function (path) {
-    loc = new Location.fromPath(path)
-    return Block.fromLocation(loc)
-}
-
-Block.create = async function (string = "", location=null) {
-    if (!location) {
-        let block = Block.getFocusedBlock()
-        location = new Location(block.uid, 0)
-    }
-    // Create block
-    let uid = window.roamAlphaAPI.util.generateUID();
-    await window.roamAlphaAPI.createBlock(
-        {
-            "location": { "parent-uid": location.parentUid, "order": location.order },
-            "block": { "string": string, "uid": uid }
-        }
-    );
-    return new Block(uid)
-}
-
-Block.getFocused = function() {
-    let res = roamAlphaAPI.ui.getFocusedBlock()
-    if (!res) return null
-    return new Block(res["block-uid"])
-}
-
-Block.prototype.update = async function (string) {
-    res = await window.roamAlphaAPI
-        .updateBlock(
-            { "block": { "uid": this.uid, "string": string } })
-    this.string = string
-    return res
-}
-
-Block.prototype.move = async function (location) {
-    await window.roamAlphaAPI.moveBlock(
-        {
-            "location": { "parent-uid": location.parentUid, "order": location.order },
-            "block": { "uid": this.uid }
-        }
-     );
-}
-
-Block.prototype.delete = async function () {
-    await window.roamAlphaAPI.deleteBlock(
-        {
-            "block": { "uid": this.uid }
-        }
-     );
-}
-
-Block.prototype.toggleExpand = async function () {
-    await window.roamAlphaAPI.updateBlock(
-        {"block": { "uid": this.uid, "open": !this.open }}
-     );
-}
-
-Block.prototype.zoom = async function () {
-    await window.roamAlphaAPI.ui.mainWindow.openBlock(
-        {block: {uid: this.uid}}
-    )
-}
-
-Block.prototype.getString = function() {
-    let string = window.roamAlphaAPI.q(`[
-        :find ?s .
-        :where
-            [?e :block/uid "${this.uid}"]
-            [?e :block/string ?s]
-    ]`)
-    return string
-}
-
-Block.prototype.getRefs = function() {
-    let ids = window.roamAlphaAPI.q(`[
-        :find [ ?r ... ]
-        :where
-            [?e :block/uid "${this.uid}"]
-            [?e :block/refs ?r]
-    ]`)
-    return ids.map(id => roam.getById(id))
-}
-
-Block.prototype.getPageRefs = function() {
-    let ids = window.roamAlphaAPI.q(`[
-        :find [ ?r ... ]
-        :where
-            [?e :block/uid "${this.uid}"]
-            [?e :block/refs ?r]
-            [?r :node/title]
-    ]`)
-    return ids.map(id => roam.getById(id))
-}
-
-Block.prototype.getBlockRefs = function() {
-    let ids = window.roamAlphaAPI.q(`[
-        :find [ ?r ... ]
-        :where
-            [?e :block/uid "${this.uid}"]
-            [?e :block/refs ?r]
-            [?r :block/string]
-    ]`)
-    return ids.map(id => roam.getById(id))
-}
-
-Block.prototype.getChildren = function () {
-    let uids = window.roamAlphaAPI.q(`[
-            :find [?uid ...]
-            :where
-                [?e :block/uid "${this.uid}"]
-                [?e :block/children ?c]
-                [?c :block/uid ?uid]
-        ]`)
-    return uids
-        .map((uid) => new Block(uid))
-        .sort((x,y) => x.order - y.order)
-}
-
-Block.prototype.getParent = function () {
-    return this.getParents().slice(-1)[0]
-}
-
-Block.prototype.getParents = function (sorted=true) {
-    let parents = window.roamAlphaAPI.q(`[
-        :find [(pull ?p [*]) ...]
-        :where
-            [?e :block/uid "${this.uid}"]
-            [?e :block/parents ?p]
-    ]`)
-    if (sorted) parents = sortParents(parents)
-    return parents.map(obj => Block.fromId(obj.id))
-}
-
-Block.prototype.getSiblingAbove = function () {
-    return this.getSiblingAdjacent(-1)
-}
-
-Block.prototype.getSiblingBelow = function () {
-    return this.getSiblingAdjacent(1)
-}
-
-Block.prototype.getSiblingAdjacent = function(offset=1) {
-    res = this.getSiblings().filter(({ order }) => order == this.order + offset)
-    return res[0]
-}
-
-Block.prototype.getSiblings = function () {
-    let parent = this.getParent()
-    return parent.getChildren()
-}
-
-Block.prototype.getRef = function () {
-    return `((${this.uid}))`
-}
-
-Block.prototype.getLocation = function () {
-    let parent = this.getParent()
-    return new Location(parent.uid, this.order)
-}
-
-Block.prototype.addChild = async function (child, idx = 0) {
-    if (child instanceof Block) {
-        await window.roamAlphaAPI.moveBlock(
-            {
-                "location": { "parent-uid": this.uid, "order": idx },
-                "block": { "uid": child.uid }
-            }
-        );
-        return new Block(block.uid)
+    if (obj["title"] === undefined) {
+        return new Block(obj["uid"])
     } else {
-        return Block.create(child.toString(), new Location(this.uid, idx))
+        return new Page(obj["uid"])
     }
 }
 
-Block.prototype.appendChild = async function (blockOrString) {
-    let idx = (await this.getChildren() || []).length
-    return this.addChild(blockOrString, idx)
-}
-
-Block.prototype.getElement = function () {
-    blockContentElement = document.querySelector(`[id$="${this.uid}"]:not(.rm-inline-reference [id$="${this.uid}"])`)
-    blockContainerElement = blockContentElement.parentElement
-    while (!blockContainerElement.classList.contains("roam-block-container")) {
-        blockContainerElement = blockContainerElement.parentElement
-    }
-    return blockContainerElement
-}
-
-Block.prototype.getTextAreaElement = function () {
-    return this.getElement().querySelector("textarea")
-}
-
-Block.prototype.getRelative = function (offset) {
-    if (offset.direction === siblingDir) {
-        return this.getSiblingAdjacent(offset.magnitude)
-    } else if (offset.direction == descendantDir ) {
-        if (offset.magnitude >= 0) {
-            return this.getChildren()[offset.magnitude] 
-        } else {
-            return this.getParents()[-offset.magnitude]
-        }
-    }
-}
-
-Block.prototype.createDate = function() {
-    let timestamp = roamAlphaAPI.q(`[
-        :find ?t .
-        :where
-            [?e :block/uid "${this.uid}"]
-            [?e :create/time ?t]
-    ]`)
-    return new Date(timestamp)
+function querySelector(selectorString) {
+    selector = new Selector(selectorString)
+    interpreter = new SelectorInterpreter(selector)
+    return interpreter.evaluate()
 }
 
 
-function Page(idx) {
-    if (idx instanceof Page) {
-        // Handle idx as page object
-        this.uid = idx.uid
-        return
-    } else if (typeof(idx) === "number") {
-        // Handle idx as internal id
-        let obj = window.roamAlphaAPI.pull("[*]", id)
-        if (obj[":node/title"] === undefined) {
-            throw "id ${idx} exists but isn't a Page object"
-        }
-        this.uid = obj[":block/uid"]
-        return
-    } else if (typeof(idx) === "string") {
-        // Handle idx as a page title
-        let title = isPageRef(idx) ? pageRefToTitle(idx) : idx
-        let uid = window.roamAlphaAPI.q(`[
-            :find ?uid .
-            :where
-                [?e :node/title "${title}"]
-                [?e :block/uid ?uid]
-        ]`)
-        if (uid !== null) {
-            this.uid = uid
-            return
-        } 
-        // Handle idx as uid
-        let id = window.roamAlphaAPI.q(`[
-            :find ?e .
-            :where
-                [?e :block/uid "${idx}"]
-                [?e :node/title]
-        ]`)
-        if (id) {
-            this.uid = idx
-            return
-        }
-    }
-    throw `identifier ${idx} is invalid for a Page`
-}
-Page.prototype = Object.create(Block.prototype)
-Page.prototype.constructor = Page;
-
-
-function block(o) {
-    if (isBlockUid(o) || o === ".") {
-        return new Block(o)
-    } else if (isBlockRef(o)) {
-        return new Block(blockRefToUid(o))
-    } else if (isPageTitle(o)) {
-        return new Page(o)
-    } else {
-        // assume it's a path
-        let loc = Location.fromPath(o)
-        return Block.fromLocation(loc)
-    }
-}
-
-
-/////////////////
-// Roam Script //
-/////////////////
-
-
-async function createBlock(string, dst="") {
-    let dstLoc = Location.fromPath(dst)
-    return Block.create(string, dstLoc)
-}
-
-async function deleteBlock(src) {
-    let srcLoc = Location.fromPath(src)
-    let block = Block.fromLocation(srcLoc)
-    return block.delete()
-}
-
-async function moveBlock(src, dst="") {
-    let srcBlock = Block.fromLocation(Location.fromPath(src))
-    let dstLoc = Location.fromPath(dst)
-    return srcBlock.move(dstLoc)
-}
-
-async function copyBlock(src, dst="") {
-    let srcBlock = Block.fromLocation(Location.fromPath(src))
-    let dstLoc = Location.fromPath(dst)
-    return Block.create(srcBlock.string, dstLoc)
-}
-
-async function refBlock(src, dst="") {
-    let srcBlock = Block.fromLocation(Location.fromPath(src))
-    let dstLoc = Location.fromPath(dst)
-    return Block.create(srcBlock.getRef(), dstLoc)
-}
-
-async function toggleExpandBlock(ref) {
-    let block = Block.fromLocation(Location.fromPath(ref))
-    return block.toggleExpand()
-}
-
-async function zoomBlock(ref) {
-    let block = Block.fromLocation(Location.fromPath(ref))
-    return block.zoom()
-}
-
-async function echo(string, dst="") {
-    let dstBlock = Block.fromLocation(Location.fromPath(dst))
-    return dstBlock.addChild(string)
-}
-
-async function cat(ref, dst="") {
-    let block = Block.fromLocation(Location.fromPath(ref))
-    let dstBlock = Block.fromLocation(Location.fromPath(dst))
-    return dstBlock.addChild(block.string)
-}
-
-async function listChildren(src, dst="") {
-    let srcBlock = Block.fromLocation(Location.fromPath(src))
-    let dstBlock = Block.fromLocation(Location.fromPath(dst))
-    let children = srcBlock.getChildren()
-    for (const child of children) {
-        await dstBlock.appendChild(child.string)
-    }
-}
-
-async function linkChildren(src, dst="") {
-    let srcBlock = Block.fromLocation(Location.fromPath(src))
-    let dstBlock = Block.fromLocation(Location.fromPath(dst))
-    let children = srcBlock.getChildren()
-    for (const child of children) {
-        await dstBlock.appendChild(child.getRef())
-    }
-}
-
-// Aliases
-mv = moveBlock
-cp = copyBlock
-ln = refBlock
-rm = deleteBlock
-mk = createBlock
-ex = toggleExpandBlock
-zm = zoomBlock 
-ls = listChildren
-lk = linkChildren
-
-
-RoamScript = {
-    execute: function(script) {
-        let lines = script.trim()
-            .split('\n')
-            .map(x => x.split(";"))
-            .reduce((x, y) => x.concat(y))
-        let outputs = [] 
-        for (const line of lines) {
-            let tokens = tokenifier(line)
-            // Transpile roam script to javascript
-            let [f, ...args] = tokens
-            args = args.map(x => '"' + x + '"').join(",")
-            var source = `${f}(${args})`
-            res = eval(source)
-            console.log(res)
-        }
-        return outputs
-    }
-}
-function tokenifier(string) {
-    string = string.trim()
-    // let tokens = Path.parsePageRefs(string)
-    let tokens = tokenifier.parseQuotedText(string)
-    tokens = tokenifier.splitTokens(tokens)
-    tokens = tokens.map(x => x instanceof Array ? x[1] : x)
-    return tokens
-}
-tokenifier.parseQuotedText = function (string) {
-    let strings = string instanceof Array ? string : [ string ]
-    let newTokens = []
-    for (string of strings) {
-        if (typeof(string) !== "string") {
-            newTokens.push(string)
-            continue
-        }
-        let matches = string.matchAll(/["']([^"']*)["']/g)
-        let lastEnd = 0
-        for (match of matches) {
-            let thisStart = match.index
-            let thisEnd = thisStart + match[0].length
-            newTokens.push(string.slice(lastEnd, thisStart))
-            newTokens.push(match)
-            lastEnd = thisEnd;
-        }
-        newTokens.push(string.slice(lastEnd))
-    }
-    return newTokens
-    
-}
-tokenifier.splitTokens = function (tokens) {
-    let newTokens = [];
-    for (const token of tokens) {
-        if (typeof (token) === "string") {
-            newTokens = newTokens.concat(token.split(" "))
-        } else {
-            newTokens.push(token)
-        }
-    }
-    return newTokens.filter(x => x.length > 0)
-}
-
-
-///////////////////
-// Roam Terminal //
-///////////////////
-
-siblingDir = "sibling"
-descendantDir = "descendant"
-adjacentBeforeChar = "^"
-adjacentAfterChar = "$"
-childChar = "/"
-parentChar = "."
-offsetChars = [adjacentAfterChar, adjacentBeforeChar, childChar, parentChar]
-pageNameHistory = "RoamTerm_history"
-
-
-function RoamTerm(block) {
-    this.block = block
-    this.uid = this.block.uid
-    this.commandHistoryId = 0
-}
-
-RoamTerm.getFocused = function() {
-    let block = Block.getFocused()
-    if (!block) return null
-    return new RoamTerm(block)
-}
-
-RoamTerm.prototype.isActive = function() {
-    termElement = this.block.getElement()
-    return termElement.querySelector(".rm-block-main").classList.contains("roamTerm")
-}
-RoamTerm.prototype.activate = function() {
-    termElement = this.block.getElement()
-    termElement.querySelector(".rm-block-main").classList.add("roamTerm")
-    promptPrefix = new PromptPrefix("~ %")
-    termElement
-        .querySelector(".controls")
-        .insertAdjacentElement("afterEnd", promptPrefix.toElement())
-}
-RoamTerm.prototype.deactivate = function() {
-    termElement = this.block.getElement()
-    termElement.querySelector(".rm-block-main").classList.remove("roamTerm")
-    termElement.querySelector(".prompt-prefix-area").remove()
-}
-RoamTerm.prototype.execute = async function () {
-    let textarea = this.block.getTextAreaElement()
-    let source = textarea.value
-    commandHistory.addToEnd(source)
-    await this.block.update("")
-    try {
-        rrsh = new RoamResearchShell()
-        rrsh.run(source)
-    } catch (error) {
-        this.block.addChild(error.toString())
-        throw error
-    }
-    // for (const out of outputs) {
-    //     await this.block.addChild(await out)
-    // }
-}
-RoamTerm.prototype.string = function () {
-    return this.block.getTextAreaElement().value
-}
-
-
-function PromptPrefix(string) {
-    this.string = string
-}
-PromptPrefix.prototype.toElement = function () {
-    prefixArea = document.createElement("div")
-    prefixArea.classList.add("prompt-prefix-area")
-    prefixContent = document.createElement("div")
-    prefixContent.classList.add("prompt-prefix-str")
-    prefixStr = document.createElement("span")
-    prefixStr.innerText = this.string
-    prefixContent.appendChild(prefixStr)
-    prefixArea.appendChild(prefixContent)
-    return prefixArea
-}
-
-
-commandHistory = {
-    getFromEnd: function(numFromEnd=-1) {
-        p = new Page(pageNameHistory)
-        string = p.getChildren().slice(numFromEnd)[0].string
-        commandLines = string.split("\n").slice(1)
-        commandLines[commandLines.length - 1] = commandLines.slice(-1)[0].slice(0,-3)
-        return commandLines.join("\n")
-    },
-    addToEnd: function(command) {
-        let p = new Page(pageNameHistory)
-        string = "`".repeat(3)+"plain text" + "\n" + command+"`".repeat(3)
-        p.appendChild(string)
-    }
-}
-
-
-if (typeof document !== "undefined") {
-    document.onkeydown = function (e) {
-        if (e.key === "Backspace") {
-            let roamTerm = RoamTerm.getFocused()
-            if (roamTerm !== null && roamTerm.isActive() && !roamTerm.string()) {
-                roamTerm.deactivate()
-            }
-        }
-        if (e.ctrlKey && e.metaKey && e.key == "Enter") {
-            let b = Block.getFocused()
-            let roamTerm = new RoamTerm(b)
-            if (roamTerm.isActive()) {
-                if (roamTerm.string()) {
-                    roamTerm.execute()
-                    roamTerm.commandHistoryId = 0
-                } else {
-                    roamTerm.deactivate()
-                }
-            } else {
-                roamTerm.activate()
-            }
-        }
-        if (e.ctrlKey && e.metaKey && ["ArrowUp", "ArrowDown"].includes(e.key)) {
-            let b = Block.getFocused()
-            let roamTerm = new RoamTerm(b)
-            if (roamTerm.isActive()) {
-                if (e.key == "ArrowUp") {
-                    roamTerm.commandHistoryId = roamTerm.commandHistoryId - 1
-                } else {
-                    roamTerm.commandHistoryId = roamTerm.commandHistoryId >= -1 ? -1 : roamTerm.commandHistoryId + 1
-                }
-                oldCommand = commandHistory.getFromEnd(roamTerm.commandHistoryId)
-                roamTerm.block.update(oldCommand)
-            }
-
-        }
-    };
-}
-
-
+module.exports = { Block, Page, Location, getById, getByUid, querySelector}
 
 /***/ }),
 
-/***/ 859:
+/***/ 138:
+/***/ ((module, __unused_webpack_exports, __webpack_require__) => {
+
+let selector = __webpack_require__(778) 
+let graph = __webpack_require__(304) 
+let commands = __webpack_require__(742) 
+let terminal = __webpack_require__(170) 
+
+module.exports = { selector, graph, commands, terminal }
+
+/***/ }),
+
+/***/ 778:
+/***/ ((module, __unused_webpack_exports, __webpack_require__) => {
+
+let { isBlockRef, isPageRef, getPageRefAtIndex } = __webpack_require__(706) 
+// let { Block, Page, Location } = require("./graph") 
+
+ROOT_CHAR = "~"
+PARENT_CHAR = "."
+FOCUSED_CHAR = "_"
+
+var START_TYPE_LIST = ["ROOT", "PARENT", "PAGE", "BLOCK", "FOCUSED"]
+var START_TYPE = {}
+START_TYPE_LIST.forEach(type => START_TYPE[type] = type)
+
+var OFFSET_TYPE_LIST = ["SIBLING", "CHILD"]
+var OFFSET_TYPE = {}
+OFFSET_TYPE_LIST.forEach(type => OFFSET_TYPE[type] = type)
+
+
+function Token(type, lexeme, value=null, index=null) {
+    this.type = type
+    this.lexeme = lexeme
+    this.value = value
+    this.index = index
+}
+
+
+function Selector(string) {
+    this.string = string;
+    let parser = new SelectorParser(string)
+    let [start, path, offset] = parser.parse()
+    this.start = start;
+    this.path = path;
+    this.offset = offset;
+}
+Selector.START_TYPE = START_TYPE 
+Selector.OFFSET_TYPE = OFFSET_TYPE 
+Selector.prototype = {
+    ...Selector.prototype,
+    split: function() {
+        return [ this.start.lexeme ].concat(path) + this.offset.map(o => o.lexeme).join("")
+    },
+    // evaluate: function() {
+    //     interpreter = new SelectorInterpreter(this)
+    //     return interpreter.evaluate()
+    // }
+}
+
+
+function SelectorParser(string) {
+    this.string = string;
+    this.current = 0;
+    this.end = this.string.length;
+    this.start;
+    this.offset = [];
+    this.path = [];
+}
+SelectorParser.prototype = {
+    ...SelectorParser.prototype,
+    parse: function() {
+        this.consumeOffset()
+        this.consumeRootAndPath()
+        return [this.start, this.path, this.offset]
+    },
+    consumeOffset: function() {
+        while (!this.isAtEnd()) {
+            if (this.endIs("^")) {
+                token = new Token(OFFSET_TYPE.SIBLING, this.consumeCharEnd(), -1, this.end)
+            } else if (this.endIs("$")) {
+                token = new Token(OFFSET_TYPE.SIBLING, this.consumeCharEnd(), 1, this.end)
+            } else if (offset = this.endMatches(/\/(?:\[(\d+)\])?$/)) {
+                let char = this.consumeCharEnd(offset[0].length)
+                let value = parseInt(offset[1] || 0)
+                token = new Token(OFFSET_TYPE.CHILD, char, value, this.end)
+            } else {
+                break
+            }
+            this.offset.push(token)
+        }
+        this.offset.reverse()
+    },
+    consumeRootAndPath: function() {
+        var strings = this.split()
+        var first = strings[0] || ""
+        if (isPageRef(first)) {
+            this.start = new Token(START_TYPE.PAGE, first, first)
+            this.path = strings.slice(1)
+        } else if (isBlockRef(first)) {
+            this.start = new Token(START_TYPE.BLOCK, first, first)
+            this.path = strings.slice(1)
+        } else if (first === PARENT_CHAR.repeat(first.length)) {
+            this.start = new Token(START_TYPE.PARENT, first, first)
+            this.path = strings.slice(1)
+        } else if (first === ROOT_CHAR) {
+            this.start = new Token(START_TYPE.ROOT, first, first)
+            this.path = strings.slice(1)
+        } else if (first === FOCUSED_CHAR) {
+            this.start = new Token(START_TYPE.FOCUSED, first, first)
+            this.path = strings.slice(1)
+        } else {
+            this.start = new Token(START_TYPE.FOCUSED, "", first)
+            this.path = strings
+        }
+    },
+    split: function() {
+        let strings = []
+        while (!this.isAtEnd()) {
+            strings.push(this.consumeUpToSep())
+        } 
+        return strings
+    },
+    consumeUpToSep: function() {
+        let string = ""
+        while (!this.nextIs("/") && !this.isAtEnd()) {
+            string += this.consumePageRef() || this.consumeChar()
+        }
+        this.consumeChar()
+        return string
+    },
+    consumePageRef: function() {
+        pageRef = getPageRefAtIndex(this.string, this.current)
+        if (pageRef) {
+            this.current += pageRef.length
+            return pageRef
+        }
+        return null
+    },
+    consumeChar: function(i=1) {
+        if (i < 1) throw new Error("i must be 1 or greater")
+        this.current += i
+        return this.string.slice(this.current - i, this.current)
+    },
+    consumeCharEnd: function(i=1) {
+        if (i < 1) throw new Error("i must be 1 or greater")
+        this.end -= i
+        return this.string.slice(this.end, this.end + i)
+    },
+    nextIs: function(string) {
+        return string === this.string.slice(this.current, this.current + string.length)
+    },
+    endIs: function(string) {
+        return string === this.string.slice(this.end - string.length, this.end)
+    },
+    endMatches: function(regex) {
+        return this.string.slice(0, this.end).match(regex)
+    },
+    isAtEnd: function() {
+        return this.current >= this.end
+    },
+}
+
+
+
+module.exports = { Selector }
+
+/***/ }),
+
+/***/ 403:
 /***/ ((module, __unused_webpack_exports, __webpack_require__) => {
 
 /* module decorator */ module = __webpack_require__.nmd(module);
@@ -1133,6 +970,8 @@ for (const [name, constructor] of Object.entries(Expr)) {
         return visitor["visit"+name](this)
     }
 }
+
+
 
 // Parser
 
@@ -1342,7 +1181,7 @@ Interpreter.prototype = {
         return expr.expressions.map(expr => this.evaluate(expr)).join("")
     },
     visitPageRef: function(expr) {
-        return expr.expressions.map(expr => this.evaluate(expr)).join("")
+        return "[[" + expr.expressions.map(expr => this.evaluate(expr)).join("") + "]]"
     },
     visitLiteral: function(expr) {
         return expr.value
@@ -1357,6 +1196,323 @@ if ( true && __webpack_require__.c[__webpack_require__.s] === module) {
     shell.run(process.argv[2])
 }
 module.exports = { RoamResearchShell, Scanner, Parser }
+
+/***/ }),
+
+/***/ 706:
+/***/ ((module) => {
+
+
+
+function Parser(string, current=0) {
+    this.string = string
+    this.current = current
+    this.start = current 
+}
+Parser.prototype = {
+    ...Parser.prototype,
+    getNext: function() {
+        while (!this.isAtEnd()) {
+            res = this.consumeToken()
+            if (res) return res
+            this.consumeChar()
+        }
+        return null
+    },
+    getAll: function() {
+        strings = []
+        string = this.getNext()
+        while (string) {
+            strings.push(string)
+            string = this.getNext()
+        }
+        return strings
+    },
+    consume: function() {
+        return this.consumeToken() || this.consumeChar()
+    },
+    consumeToken: function() {
+        throw new Error("consume not implemented")
+    },
+    consumeChar: function(i=1) {
+        if (i < 1) throw new Error("i must be 1 or greater")
+        if (this.isAtEnd()) return null
+        this.current += i
+        this.start = this.current
+        return this.string.slice(this.current - i, this.current)
+    },
+    nextIs: function(string) {
+        return string === this.string.slice(this.current, this.current + string.length)
+    },
+    peak: function() {
+        return this.string[this.current]
+    },
+    isAtEnd: function() {
+        return this.current >= this.string.length 
+    },
+    null: function() {
+        this.current = this.start
+        return null
+    }
+}
+
+function PageRefParser(string, current=0) {
+    Parser.call(this, string, current)
+}
+PageRefParser.prototype = Object.create(Parser.prototype)
+PageRefParser.prototype.constructor = PageRefParser
+PageRefParser.prototype.consumeToken = function() {
+    let res = ""
+    if (!this.nextIs("[[")) return this.null()
+    res += this.consumeChar(2)
+
+    while (!this.nextIs("]]") && !this.isAtEnd()) {
+        res += this.consumeToken() || this.consumeChar()
+    }
+
+    if (!this.nextIs("]]")) return this.null()
+    res += this.consumeChar(2)
+
+    return res
+}
+
+function BlockRefParser(string, current=0) {
+    Parser.call(this, string, current)
+}
+BlockRefParser.prototype = Object.create(Parser.prototype)
+BlockRefParser.prototype.constructor = BlockRefParser
+BlockRefParser.prototype.consumeToken = function() {
+    this.start = this.current
+    let block = ""
+
+    if (!this.nextIs("((")) return this.null()
+    block += this.consumeChar(2)
+
+    while (!this.nextIs("))") && !this.isAtEnd()) {
+        block += this.consumeChar()
+    }
+
+    if (!this.nextIs("))")) return this.null()
+    block += this.consumeChar(2)
+
+    return block
+}
+
+
+function matchPageRef(string, options={global: false}) {
+    var parser = new PageRefParser(string)
+    var pageRef = parser.getNext()
+    if (pageRef) {
+        let match = [ pageRef ];
+        match.index = parser.current - pageRef.length;
+        match.input = string;
+        return match
+    }
+    return null
+}
+
+function getPageRefAtIndex(string, index=0) {
+    let parser = new PageRefParser(string, current=index)
+    return parser.consumeToken()
+}
+
+function isPageRef(x) {
+    if (typeof(x) !== "string") return false
+    let parser = new PageRefParser(x)
+    let res = parser.consumeToken()
+    return res !== null && res.length === x.length
+}
+
+function isBlockRef(x) {
+    if (typeof(x) !== "string") return false
+    let parser = new BlockRefParser(x)
+    let res = parser.consumeToken()
+    return res !== null && res.length === x.length
+}
+
+function isBlockUid(x) {
+    return typeof (x) === "string" && (x.match(/^[\w\d\-_]{9}$/) !== null || x.match(/\d\d\-\d\d-\d\d\d\d/) !== null) // TODO: finish
+}
+
+
+module.exports = { isBlockRef, isPageRef, isBlockUid, getPageRefAtIndex, matchPageRef}
+
+/***/ }),
+
+/***/ 170:
+/***/ ((module, __unused_webpack_exports, __webpack_require__) => {
+
+let { RoamResearchShell } = __webpack_require__(403);
+let { Block, Page, Roam } = __webpack_require__(304);
+// let { mv, cp, ln, rm, mk, ex, zm, ls, lk, echo, cat } = require('./commands');
+
+
+PAGE_NAME_HISTORY = typeof(PAGE_NAME_HISTORY) === "undefined" ? "RoamTerm_history" : PAGE_NAME_HISTORY
+
+
+function RoamTerm(block) {
+    this.block = block
+    this.uid = this.block.uid
+    this.commandHistoryId = 0
+}
+RoamTerm.getFocused = function() {
+    let block = Block.getFocused()
+    if (!block) return null
+    return new RoamTerm(block)
+}
+RoamTerm.prototype = {
+    ...RoamTerm.prototype,
+    isActive: function() {
+        termElement = this.block.getElement()
+        return termElement.querySelector(".rm-block-main").classList.contains("roamTerm")
+    },
+    activate: function() {
+        termElement = this.block.getElement()
+        termElement.querySelector(".rm-block-main").classList.add("roamTerm")
+        promptPrefix = new PromptPrefix("~ %")
+        termElement
+            .querySelector(".controls")
+            .insertAdjacentElement("afterEnd", promptPrefix.toElement())
+    },
+    deactivate: function() {
+        termElement = this.block.getElement()
+        termElement.querySelector(".rm-block-main").classList.remove("roamTerm")
+        termElement.querySelector(".prompt-prefix-area").remove()
+    },
+    execute: async function () {
+        let textarea = this.block.getTextAreaElement()
+        let source = textarea.value
+        commandHistory.addToEnd(source)
+        await this.block.update("")
+        try {
+            rrsh = new RoamResearchShell()
+            rrsh.run(source)
+        } catch (error) {
+            this.block.addChild(error.toString())
+            throw error
+        }
+        // for (const out of outputs) {
+        //     await this.block.addChild(await out)
+        // }
+    },
+    string: function () {
+        return this.block.getTextAreaElement().value
+    }
+}
+
+
+function PromptPrefix(string) {
+    this.string = string
+}
+PromptPrefix.prototype = {
+    ...PromptPrefix.prototype,
+    toElement: function () {
+        prefixArea = document.createElement("div")
+        prefixArea.classList.add("prompt-prefix-area")
+        prefixContent = document.createElement("div")
+        prefixContent.classList.add("prompt-prefix-str")
+        prefixStr = document.createElement("span")
+        prefixStr.innerText = this.string
+        prefixContent.appendChild(prefixStr)
+        prefixArea.appendChild(prefixContent)
+        return prefixArea
+    }
+}
+
+
+commandHistory = {
+    pageName: PAGE_NAME_HISTORY,
+    getFromEnd: function(numFromEnd=-1) {
+        p = new Page(this.pageName)
+        string = p.getChildren().slice(numFromEnd)[0].string
+        commandLines = string.split("\n").slice(1)
+        commandLines[commandLines.length - 1] = commandLines.slice(-1)[0].slice(0,-3)
+        return commandLines.join("\n")
+    },
+    addToEnd: function(command) {
+        let p = new Page(this.pageName)
+        string = "`".repeat(3)+"plain text" + "\n" + command+"`".repeat(3)
+        p.appendChild(string)
+    }
+}
+
+setUpListener = () => {
+    // document.addEventListener("onkeydown", (e) => {
+    //     if (e.key === "Backspace") {
+    //         let roamTerm = RoamTerm.getFocused()
+    //         if (roamTerm !== null && roamTerm.isActive() && !roamTerm.string()) {
+    //             roamTerm.deactivate()
+    //         }
+    //     }
+    //     else if (e.ctrlKey && e.metaKey && e.key == "Enter") {
+    //         let b = Block.getFocused()
+    //         let roamTerm = new RoamTerm(b)
+    //         if (roamTerm.isActive()) {
+    //             if (roamTerm.string()) {
+    //                 roamTerm.execute()
+    //                 roamTerm.commandHistoryId = 0
+    //             } else {
+    //                 roamTerm.deactivate()
+    //             }
+    //         } else {
+    //             roamTerm.activate()
+    //         }
+    //     }
+    //     else if (e.ctrlKey && e.metaKey && ["ArrowUp", "ArrowDown"].includes(e.key)) {
+    //         let b = Block.getFocused()
+    //         let roamTerm = new RoamTerm(b)
+    //         if (roamTerm.isActive()) {
+    //             if (e.key == "ArrowUp") {
+    //                 roamTerm.commandHistoryId = roamTerm.commandHistoryId - 1
+    //             } else {
+    //                 roamTerm.commandHistoryId = roamTerm.commandHistoryId >= -1 ? -1 : roamTerm.commandHistoryId + 1
+    //             }
+    //             oldCommand = commandHistory.getFromEnd(roamTerm.commandHistoryId)
+    //             roamTerm.block.update(oldCommand)
+    //         }
+    //     }
+    // })
+   document.onkeydown = function (e) {
+       if (e.key === "Backspace") {
+           let roamTerm = RoamTerm.getFocused()
+           if (roamTerm !== null && roamTerm.isActive() && !roamTerm.string()) {
+               roamTerm.deactivate()
+           }
+       }
+       if (e.ctrlKey && e.metaKey && e.key == "Enter") {
+           let b = Block.getFocused()
+           let roamTerm = new RoamTerm(b)
+           if (roamTerm.isActive()) {
+               if (roamTerm.string()) {
+                   roamTerm.execute()
+                   roamTerm.commandHistoryId = 0
+               } else {
+                   roamTerm.deactivate()
+               }
+           } else {
+               roamTerm.activate()
+           }
+       }
+       if (e.ctrlKey && e.metaKey && ["ArrowUp", "ArrowDown"].includes(e.key)) {
+           let b = Block.getFocused()
+           let roamTerm = new RoamTerm(b)
+           if (roamTerm.isActive()) {
+               if (e.key == "ArrowUp") {
+                   roamTerm.commandHistoryId = roamTerm.commandHistoryId - 1
+               } else {
+                   roamTerm.commandHistoryId = roamTerm.commandHistoryId >= -1 ? -1 : roamTerm.commandHistoryId + 1
+               }
+               oldCommand = commandHistory.getFromEnd(roamTerm.commandHistoryId)
+               roamTerm.block.update(oldCommand)
+           }
+
+       }
+   };
+}
+
+
+
+module.exports = { setUpListener }
 
 /***/ })
 
@@ -1407,7 +1563,8 @@ module.exports = { RoamResearchShell, Scanner, Parser }
 /******/ 	// module cache are used so entry inlining is disabled
 /******/ 	// startup
 /******/ 	// Load entry module and return exports
-/******/ 	var __webpack_exports__ = __webpack_require__(__webpack_require__.s = 9);
+/******/ 	var __webpack_exports__ = __webpack_require__(__webpack_require__.s = 138);
+/******/ 	roam = __webpack_exports__;
 /******/ 	
 /******/ })()
 ;

@@ -126,5 +126,9 @@ function isBlockRef(x) {
     return res !== null && res.length === x.length
 }
 
+function isBlockUid(x) {
+    return typeof (x) === "string" && (x.match(/^[\w\d\-_]{9}$/) !== null || x.match(/\d\d\-\d\d-\d\d\d\d/) !== null) // TODO: finish
+}
 
-module.exports = { isBlockRef, isPageRef, getPageRefAtIndex, matchPageRef}
+
+module.exports = { isBlockRef, isPageRef, isBlockUid, getPageRefAtIndex, matchPageRef}

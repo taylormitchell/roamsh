@@ -144,6 +144,8 @@ for (const [name, constructor] of Object.entries(Expr)) {
     }
 }
 
+
+
 // Parser
 
 function Parser(tokens) {
@@ -352,7 +354,7 @@ Interpreter.prototype = {
         return expr.expressions.map(expr => this.evaluate(expr)).join("")
     },
     visitPageRef: function(expr) {
-        return expr.expressions.map(expr => this.evaluate(expr)).join("")
+        return "[[" + expr.expressions.map(expr => this.evaluate(expr)).join("") + "]]"
     },
     visitLiteral: function(expr) {
         return expr.value

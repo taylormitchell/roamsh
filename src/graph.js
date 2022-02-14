@@ -1,31 +1,9 @@
+var { Selector } = require("./selector") 
 
 
-// Objects
-
-Roam = {
-    getById: function(id) {
-        let obj = window.roamAlphaAPI.pull("[*]", id)
-        if (obj[":node/title"] === undefined) {
-            return new Block(id)
-        } else {
-            return new Page(id)
-        }
-    },
-    getByUid: function(uid) {
-        let obj = window.roamAlphaAPI.q(`[
-            :find (pull ?e [*]) .
-            :where
-                [?e :block/uid "${uid}"]
-        ]`)
-        if (obj["title"] === undefined) {
-            return new Block(obj["uid"])
-        } else {
-            return new Page(obj["uid"])
-        }
-    },
-    getByLocation: function(parentUid, order) {
-
-    }
+function Location(parentUid, order) {
+    this.parentUid = parentUid
+    this.order = order
 }
 
 
@@ -65,9 +43,9 @@ Block.fromId = function (id) {
     ]`)
     return new Block(uid)
 }
-Block.fromLocation = function (parentUid, order) {
-    parent = new Block(parentUid)
-    return parent.getChildren()[order]
+Block.fromLocation = function (location) {
+    parent = new Block(location.parentUid)
+    return parent.getChildren()[location.order]
 }
 Block.create = async function (string = "", location=null) {
     if (!location) {
@@ -132,6 +110,15 @@ Block.prototype = {
         ]`)
         return string
     },
+    getOrder: function() {
+        let order = window.roamAlphaAPI.q(`[
+            :find ?o .
+            :where
+                [?e :block/uid "${this.uid}"]
+                [?e :block/order ?o]
+        ]`)
+        return order
+    }, 
     getRefs: function() {
         let ids = window.roamAlphaAPI.q(`[
             :find [ ?r ... ]
@@ -184,7 +171,7 @@ Block.prototype = {
                 [?e :block/parents ?p]
         ]`)
         if (sorted) parents = sortParents(parents)
-        return parents.map(obj => Block.fromId(obj.id))
+        return parents.map(obj => Roam.getById(obj.id))
     },
     getSiblingAbove: function () {
         return this.getSiblingAdjacent(-1)
@@ -265,7 +252,7 @@ function Page(idx) {
         return
     } else if (typeof(idx) === "number") {
         // Handle idx as internal id
-        let obj = window.roamAlphaAPI.pull("[*]", id)
+        let obj = window.roamAlphaAPI.pull("[*]", idx)
         if (obj[":node/title"] === undefined) {
             throw "id ${idx} exists but isn't a Page object"
         }
@@ -301,6 +288,114 @@ function Page(idx) {
 Page.prototype = Object.create(Block.prototype)
 Page.prototype.constructor = Page;
 
+
+function LocationNotFound(message) {
+    instance = new Error(message);
+    instance.name = 'LocationNotFound';
+    Object.setPrototypeOf(instance, Object.getPrototypeOf(this));
+    if (Error.captureStackTrace) {
+        Error.captureStackTrace(instance, LocationNotFound);
+      }
+    return instance;
+}
+LocationNotFound.prototype = Object.create(Error.prototype)
+LocationNotFound.prototype.constructor = LocationNotFound
+
+
+function SelectorInterpreter(selector) {
+    if (!(selector instanceof Selector)) {
+        selector = new Selector(selector)
+    }
+    this.selector = selector
+}
+SelectorInterpreter.prototype.error = function(message, token) {
+    if (token) {
+        string = this.selector.string
+        pointer = " ".repeat(token.index) + "^".repeat(token.lexeme.length)
+        message += "\n\n" + string + "\n" + pointer
+    }
+    throw LocationNotFound(message)
+}
+SelectorInterpreter.prototype.evaluate = function() {
+    // Get starting object
+    var node;
+    switch (this.selector.start.type) {
+        case Selector.START_TYPE.ROOT:
+            throw new LocationNotFound(`No support for selectors starting at ${selector.start} yet :(`);
+        case Selector.START_TYPE.PARENT:
+            node = Block.getFocused()
+            for (var i = 0; i < this.selector.start.length; i++) {
+                node = block.getParent();
+            }
+            break;
+        case Selector.START_TYPE.FOCUSED:
+            node = Block.getFocused();
+            break;
+        case Selector.START_TYPE.PAGE:
+            node = new Page(this.selector.start.lexeme);
+            break;
+        case Selector.START_TYPE.BLOCK:
+            node = new Block(this.selector.start.lexeme);
+            break;
+        default:
+            throw new LocationNotFound(`Invalid selector start: ${this.selector.start}`);
+    }
+
+    // Traverse path
+    for (var searchString of this.selector.path) {
+        let res = node.getChildren().filter(({ string }) => string === searchString)
+        if (res.length === 0) {
+            throw new LocationNotFound(`"${searchString}" doesn't match any children of ${node.uid}`)
+        }
+        node = res[0]
+    }
+
+    // Traverse offset
+    var location;
+    for (var offset of this.selector.offset) {
+        if (location) {
+            throw `Can't apply offset once selector reaches `+
+                  `new location: ${offset.lexeme} at index ${offset.index}`
+        }
+        switch (offset.type) {
+            case Selector.OFFSET_TYPE.SIBLING:
+                if (node instanceof Page) {
+                    this.error("Can't select a sibling of a Page", offset)
+                }
+                let order = node.getOrder() + offset.value
+                let siblings = node.getSiblings()
+                if (order < 0) {
+                    location = new Location(node.getParent().uid, 0)
+                } else if (order < siblings.length) {
+                    node = siblings[order]
+                } else if (order >= siblings.length) {
+                    location = new Location(node.getParent().uid, siblings.length)
+                }    
+                break;
+            case Selector.OFFSET_TYPE.CHILD:
+                let childNum = offset.value
+                let children = node.getChildren()
+                if (children.length === 0) {
+                    if (childNum >= 1) {
+                        this.error('Child selector index must be <=0 when node has no children', token);
+                    } else {
+                        location = new Location(node.uid, 0)
+                    }
+                } else if (childNum < 0) {
+                    node = children.slice(childNum)[0]
+                } else if (childNum < children.length) {
+                    node = children[childNum]
+                } else {
+                    location = new Location(node.getParent().uid, children.length)
+                }
+                break;
+            default:
+                throw `Invalid offset type: ${offsetToken.type}`
+        }
+    }
+
+    return location || node
+}
 
 // Helpers
 
@@ -407,5 +502,33 @@ function sortParents(parents) {
     return sortedParents
 }
 
+function getById(id) {
+    let obj = window.roamAlphaAPI.pull("[*]", id)
+    if (obj[":node/title"] === undefined) {
+        return new Block(id)
+    } else {
+        return new Page(id)
+    }
+}
 
-module.exports = { Block, Page, Roam }
+function getByUid(uid) {
+    let obj = window.roamAlphaAPI.q(`[
+        :find (pull ?e [*]) .
+        :where
+            [?e :block/uid "${uid}"]
+    ]`)
+    if (obj["title"] === undefined) {
+        return new Block(obj["uid"])
+    } else {
+        return new Page(obj["uid"])
+    }
+}
+
+function querySelector(selectorString) {
+    selector = new Selector(selectorString)
+    interpreter = new SelectorInterpreter(selector)
+    return interpreter.evaluate()
+}
+
+
+module.exports = { Block, Page, Location, getById, getByUid, querySelector}

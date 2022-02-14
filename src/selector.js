@@ -1,64 +1,101 @@
 let { isBlockRef, isPageRef, getPageRefAtIndex } = require("./str") 
+// let { Block, Page, Location } = require("./graph") 
 
 ROOT_CHAR = "~"
 PARENT_CHAR = "."
 FOCUSED_CHAR = "_"
 
+var START_TYPE_LIST = ["ROOT", "PARENT", "PAGE", "BLOCK", "FOCUSED"]
+var START_TYPE = {}
+START_TYPE_LIST.forEach(type => START_TYPE[type] = type)
+
+var OFFSET_TYPE_LIST = ["SIBLING", "CHILD"]
+var OFFSET_TYPE = {}
+OFFSET_TYPE_LIST.forEach(type => OFFSET_TYPE[type] = type)
+
+
+function Token(type, lexeme, value=null, index=null) {
+    this.type = type
+    this.lexeme = lexeme
+    this.value = value
+    this.index = index
+}
+
+
 function Selector(string) {
     this.string = string;
     let parser = new SelectorParser(string)
-    let [root, path, offset] = parser.parse()
-    this.root = root;
+    let [start, path, offset] = parser.parse()
+    this.start = start;
     this.path = path;
     this.offset = offset;
 }
+Selector.START_TYPE = START_TYPE 
+Selector.OFFSET_TYPE = OFFSET_TYPE 
 Selector.prototype = {
     ...Selector.prototype,
     split: function() {
-        return [ this.root ].concat(path) + this.offset.join("")
+        return [ this.start.lexeme ].concat(path) + this.offset.map(o => o.lexeme).join("")
     },
+    // evaluate: function() {
+    //     interpreter = new SelectorInterpreter(this)
+    //     return interpreter.evaluate()
+    // }
 }
+
 
 function SelectorParser(string) {
     this.string = string;
     this.current = 0;
     this.end = this.string.length;
-    this.offset;
-    this.root;
-    this.path;
+    this.start;
+    this.offset = [];
+    this.path = [];
 }
 SelectorParser.prototype = {
     ...SelectorParser.prototype,
     parse: function() {
         this.consumeOffset()
         this.consumeRootAndPath()
-        return [this.root, this.path, this.offset]
+        return [this.start, this.path, this.offset]
     },
     consumeOffset: function() {
-        let offsets = []
-        let pat = /((\/(\[\d+\])?)|\$|\^)$/
-        let match = this.string.match(pat) 
-        while (match !== null) {
-            offsets.push(match[0])
-            this.end = match.index
-            match = this.string.slice(0, this.end).match(pat) 
+        while (!this.isAtEnd()) {
+            if (this.endIs("^")) {
+                token = new Token(OFFSET_TYPE.SIBLING, this.consumeCharEnd(), -1, this.end)
+            } else if (this.endIs("$")) {
+                token = new Token(OFFSET_TYPE.SIBLING, this.consumeCharEnd(), 1, this.end)
+            } else if (offset = this.endMatches(/\/(?:\[(\d+)\])?$/)) {
+                let char = this.consumeCharEnd(offset[0].length)
+                let value = parseInt(offset[1] || 0)
+                token = new Token(OFFSET_TYPE.CHILD, char, value, this.end)
+            } else {
+                break
+            }
+            this.offset.push(token)
         }
-        offsets.reverse()
-        this.offset = offsets
+        this.offset.reverse()
     },
     consumeRootAndPath: function() {
-        strings = this.split()
-        if (
-            isPageRef(strings[0]) || 
-            isBlockRef(strings[0]) ||
-            strings[0] == ROOT_CHAR ||
-            strings[0] == PARENT_CHAR ||
-            strings[0] == FOCUSED_CHAR
-        ) {
-            this.root = strings[0]
+        var strings = this.split()
+        var first = strings[0] || ""
+        if (isPageRef(first)) {
+            this.start = new Token(START_TYPE.PAGE, first, first)
+            this.path = strings.slice(1)
+        } else if (isBlockRef(first)) {
+            this.start = new Token(START_TYPE.BLOCK, first, first)
+            this.path = strings.slice(1)
+        } else if (first === PARENT_CHAR.repeat(first.length)) {
+            this.start = new Token(START_TYPE.PARENT, first, first)
+            this.path = strings.slice(1)
+        } else if (first === ROOT_CHAR) {
+            this.start = new Token(START_TYPE.ROOT, first, first)
+            this.path = strings.slice(1)
+        } else if (first === FOCUSED_CHAR) {
+            this.start = new Token(START_TYPE.FOCUSED, first, first)
             this.path = strings.slice(1)
         } else {
-            this.root = FOCUSED_CHAR
+            this.start = new Token(START_TYPE.FOCUSED, "", first)
             this.path = strings
         }
     },
@@ -90,12 +127,25 @@ SelectorParser.prototype = {
         this.current += i
         return this.string.slice(this.current - i, this.current)
     },
+    consumeCharEnd: function(i=1) {
+        if (i < 1) throw new Error("i must be 1 or greater")
+        this.end -= i
+        return this.string.slice(this.end, this.end + i)
+    },
     nextIs: function(string) {
         return string === this.string.slice(this.current, this.current + string.length)
+    },
+    endIs: function(string) {
+        return string === this.string.slice(this.end - string.length, this.end)
+    },
+    endMatches: function(regex) {
+        return this.string.slice(0, this.end).match(regex)
     },
     isAtEnd: function() {
         return this.current >= this.end
     },
 }
+
+
 
 module.exports = { Selector }

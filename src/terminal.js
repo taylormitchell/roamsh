@@ -1,11 +1,9 @@
 let { RoamResearchShell } = require('./shell');
-let { Block, Page, Roam } = require('./core');
-let { mv, cp, ln, rm, mk, ex, zm, ls, lk, echo, cat } = require('./commands');
+let { Block, Page, Roam } = require('./graph');
+// let { mv, cp, ln, rm, mk, ex, zm, ls, lk, echo, cat } = require('./commands');
 
 
 PAGE_NAME_HISTORY = typeof(PAGE_NAME_HISTORY) === "undefined" ? "RoamTerm_history" : PAGE_NAME_HISTORY
-
-
 
 
 function RoamTerm(block) {
@@ -94,80 +92,80 @@ commandHistory = {
     }
 }
 
-document.addEventListener("onkeydown", (e) => {
-    if (e.key === "Backspace") {
-        let roamTerm = RoamTerm.getFocused()
-        if (roamTerm !== null && roamTerm.isActive() && !roamTerm.string()) {
-            roamTerm.deactivate()
-        }
-    }
-    else if (e.ctrlKey && e.metaKey && e.key == "Enter") {
-        let b = Block.getFocused()
-        let roamTerm = new RoamTerm(b)
-        if (roamTerm.isActive()) {
-            if (roamTerm.string()) {
-                roamTerm.execute()
-                roamTerm.commandHistoryId = 0
-            } else {
-                roamTerm.deactivate()
-            }
-        } else {
-            roamTerm.activate()
-        }
-    }
-    else if (e.ctrlKey && e.metaKey && ["ArrowUp", "ArrowDown"].includes(e.key)) {
-        let b = Block.getFocused()
-        let roamTerm = new RoamTerm(b)
-        if (roamTerm.isActive()) {
-            if (e.key == "ArrowUp") {
-                roamTerm.commandHistoryId = roamTerm.commandHistoryId - 1
-            } else {
-                roamTerm.commandHistoryId = roamTerm.commandHistoryId >= -1 ? -1 : roamTerm.commandHistoryId + 1
-            }
-            oldCommand = commandHistory.getFromEnd(roamTerm.commandHistoryId)
-            roamTerm.block.update(oldCommand)
-        }
-    }
-})
+setUpListener = () => {
+    // document.addEventListener("onkeydown", (e) => {
+    //     if (e.key === "Backspace") {
+    //         let roamTerm = RoamTerm.getFocused()
+    //         if (roamTerm !== null && roamTerm.isActive() && !roamTerm.string()) {
+    //             roamTerm.deactivate()
+    //         }
+    //     }
+    //     else if (e.ctrlKey && e.metaKey && e.key == "Enter") {
+    //         let b = Block.getFocused()
+    //         let roamTerm = new RoamTerm(b)
+    //         if (roamTerm.isActive()) {
+    //             if (roamTerm.string()) {
+    //                 roamTerm.execute()
+    //                 roamTerm.commandHistoryId = 0
+    //             } else {
+    //                 roamTerm.deactivate()
+    //             }
+    //         } else {
+    //             roamTerm.activate()
+    //         }
+    //     }
+    //     else if (e.ctrlKey && e.metaKey && ["ArrowUp", "ArrowDown"].includes(e.key)) {
+    //         let b = Block.getFocused()
+    //         let roamTerm = new RoamTerm(b)
+    //         if (roamTerm.isActive()) {
+    //             if (e.key == "ArrowUp") {
+    //                 roamTerm.commandHistoryId = roamTerm.commandHistoryId - 1
+    //             } else {
+    //                 roamTerm.commandHistoryId = roamTerm.commandHistoryId >= -1 ? -1 : roamTerm.commandHistoryId + 1
+    //             }
+    //             oldCommand = commandHistory.getFromEnd(roamTerm.commandHistoryId)
+    //             roamTerm.block.update(oldCommand)
+    //         }
+    //     }
+    // })
+   document.onkeydown = function (e) {
+       if (e.key === "Backspace") {
+           let roamTerm = RoamTerm.getFocused()
+           if (roamTerm !== null && roamTerm.isActive() && !roamTerm.string()) {
+               roamTerm.deactivate()
+           }
+       }
+       if (e.ctrlKey && e.metaKey && e.key == "Enter") {
+           let b = Block.getFocused()
+           let roamTerm = new RoamTerm(b)
+           if (roamTerm.isActive()) {
+               if (roamTerm.string()) {
+                   roamTerm.execute()
+                   roamTerm.commandHistoryId = 0
+               } else {
+                   roamTerm.deactivate()
+               }
+           } else {
+               roamTerm.activate()
+           }
+       }
+       if (e.ctrlKey && e.metaKey && ["ArrowUp", "ArrowDown"].includes(e.key)) {
+           let b = Block.getFocused()
+           let roamTerm = new RoamTerm(b)
+           if (roamTerm.isActive()) {
+               if (e.key == "ArrowUp") {
+                   roamTerm.commandHistoryId = roamTerm.commandHistoryId - 1
+               } else {
+                   roamTerm.commandHistoryId = roamTerm.commandHistoryId >= -1 ? -1 : roamTerm.commandHistoryId + 1
+               }
+               oldCommand = commandHistory.getFromEnd(roamTerm.commandHistoryId)
+               roamTerm.block.update(oldCommand)
+           }
+
+       }
+   };
+}
 
 
-//if (typeof document !== "undefined") {
-//    document.onkeydown = function (e) {
-//        if (e.key === "Backspace") {
-//            let roamTerm = RoamTerm.getFocused()
-//            if (roamTerm !== null && roamTerm.isActive() && !roamTerm.string()) {
-//                roamTerm.deactivate()
-//            }
-//        }
-//        if (e.ctrlKey && e.metaKey && e.key == "Enter") {
-//            let b = Block.getFocused()
-//            let roamTerm = new RoamTerm(b)
-//            if (roamTerm.isActive()) {
-//                if (roamTerm.string()) {
-//                    roamTerm.execute()
-//                    roamTerm.commandHistoryId = 0
-//                } else {
-//                    roamTerm.deactivate()
-//                }
-//            } else {
-//                roamTerm.activate()
-//            }
-//        }
-//        if (e.ctrlKey && e.metaKey && ["ArrowUp", "ArrowDown"].includes(e.key)) {
-//            let b = Block.getFocused()
-//            let roamTerm = new RoamTerm(b)
-//            if (roamTerm.isActive()) {
-//                if (e.key == "ArrowUp") {
-//                    roamTerm.commandHistoryId = roamTerm.commandHistoryId - 1
-//                } else {
-//                    roamTerm.commandHistoryId = roamTerm.commandHistoryId >= -1 ? -1 : roamTerm.commandHistoryId + 1
-//                }
-//                oldCommand = commandHistory.getFromEnd(roamTerm.commandHistoryId)
-//                roamTerm.block.update(oldCommand)
-//            }
-//
-//        }
-//    };
-//}
-//
-//
+
+module.exports = { setUpListener }
