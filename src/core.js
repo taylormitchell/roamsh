@@ -26,16 +26,29 @@ function Block(idx) {
         }
     }
     if (!this.uid) throw `${idx} isn't a valid id, uid, or block`
-    let blockAttrs = window.roamAlphaAPI.q(`[
-        :find (pull ?e [*]) .
+    this.id = window.roamAlphaAPI.q(`[
+        :find ?e .
         :where
             [?e :block/uid "${this.uid}"]
     ]`)
-    for (const [attr, val] of Object.entries(blockAttrs)) {
-        this[attr] = val;
-    }
+    // let blockAttrs = window.roamAlphaAPI.q(`[
+    //     :find (pull ?e [*]) .
+    //     :where
+    //         [?e :block/uid "${this.uid}"]
+    // ]`)
+    // for (const [attr, val] of Object.entries(blockAttrs)) {
+    //     this[attr] = val;
+    // }
 }
-Block.fromId = function (id) {
+Block.getByUid = function (uid) {
+    let id = window.roamAlphaAPI.q(`[
+      :find ?e .
+      :where
+         [?e :block/uid ${uid}]
+    ]`)
+    return new Block(uid)
+}
+Block.getById = function (id) {
     let uid = window.roamAlphaAPI.q(`[
       :find ?uid .
       :where
@@ -43,9 +56,14 @@ Block.fromId = function (id) {
     ]`)
     return new Block(uid)
 }
-Block.fromLocation = function (location) {
+Block.getByLocation = function (location) {
     parent = new Block(location.parentUid)
     return parent.getChildren()[location.order]
+}
+Block.getFocused = function() {
+    let res = roamAlphaAPI.ui.getFocusedBlock()
+    if (!res) return null
+    return new Block(res["block-uid"])
 }
 Block.create = async function (string = "", location=null) {
     if (!location) {
@@ -62,13 +80,9 @@ Block.create = async function (string = "", location=null) {
     );
     return new Block(uid)
 }
-Block.getFocused = function() {
-    let res = roamAlphaAPI.ui.getFocusedBlock()
-    if (!res) return null
-    return new Block(res["block-uid"])
-}
 Block.prototype = {
     ...Block.prototype,
+    // Edit 
     update: async function (string) {
         res = await window.roamAlphaAPI
             .updateBlock(
@@ -91,42 +105,112 @@ Block.prototype = {
             }
          );
     },
+    addChild: async function (child, idx = 0) {
+        if (child instanceof Block) {
+            await window.roamAlphaAPI.moveBlock(
+                {
+                    "location": { "parent-uid": this.uid, "order": idx },
+                    "block": { "uid": child.uid }
+                }
+            );
+            return new Block(block.uid)
+        } else {
+            return Block.create(child.toString(), new Location(this.uid, idx))
+        }
+    },
+    appendChild: async function (blockOrString) {
+        let idx = (await this.getChildren() || []).length
+        return this.addChild(blockOrString, idx)
+    },
+    // UI
     toggleExpand: async function () {
         await window.roamAlphaAPI.updateBlock(
             {"block": { "uid": this.uid, "open": !this.open }}
          );
     },
-    zoom: async function () {
+    open: async function () {
         await window.roamAlphaAPI.ui.mainWindow.openBlock(
             {block: {uid: this.uid}}
         )
     },
+    // Datomic properties
+    pull: function() {
+        return window.roamAlphaAPI.pull("[*]", this.id)
+    },
+    getChildren: function () {
+        let ids = this.getPropertyList("children")
+        return ids
+            .map((id) => new Block(id))
+            .sort((x,y) => x.getOrder() - y.getOrder())
+    },
     getString: function() {
-        let string = window.roamAlphaAPI.q(`[
-            :find ?s .
-            :where
-                [?e :block/uid "${this.uid}"]
-                [?e :block/string ?s]
-        ]`)
-        return string
+        return this.getProperty("string")
     },
     getOrder: function() {
-        let order = window.roamAlphaAPI.q(`[
-            :find ?o .
-            :where
-                [?e :block/uid "${this.uid}"]
-                [?e :block/order ?o]
-        ]`)
-        return order
+        return this.getProperty("order")
     }, 
     getRefs: function() {
-        let ids = window.roamAlphaAPI.q(`[
-            :find [ ?r ... ]
+        let ids = this.getPropertyList("refs")
+        return ids.map(id => getById(id))
+    },
+    getParents: function (sorted=true) {
+        let parents = window.roamAlphaAPI.q(`[
+            :find [(pull ?p [*]) ...]
             :where
                 [?e :block/uid "${this.uid}"]
-                [?e :block/refs ?r]
+                [?e :block/parents ?p]
         ]`)
+        if (sorted) parents = sortParents(parents)
+        return parents.map(obj => getById(obj.id))
+    },
+    getPage: function() {
+        let id = this.getProperty("page")
+        return new Page(id)
+    },
+    getHeading: function() {
+        return this.getProperty("heading")
+    },
+    getOpen: function() {
+        return this.getProperty("open")
+    },
+    getTextAlign: function() {
+        return this.getProperty("text-align")
+    },
+    getProps: function() {
+        return this.getProperty("props")
+    },
+    getCreateEmail: function() {
+        return this.getProperty("email", "create")
+    },
+    getCreateTime: function() {
+        return this.getProperty("time", "create")
+    },
+    getEditEmail: function() {
+        return this.getProperty("email", "edit")
+    },
+    getEditTime: function() {
+        return this.getProperty("time", "edit")
+    },
+    getLookup: function() {
+        let ids = this.getPropertyList("lookup", "attrs")
         return ids.map(id => getById(id))
+    },
+    // Derived properties
+    getBackRefs: function() {
+        return getBackRefs(this.uid)
+    },
+    getCreateDate: function() {
+        return new Date(this.getCreateTime())
+    },
+    getEditDate: function() {
+        return new Date(this.getEditTime())
+    },
+    getLocation: function () {
+        let parent = this.getParent()
+        return new Location(parent.uid, this.order)
+    },
+    getRef: function () {
+        return `((${this.uid}))`
     },
     getPageRefs: function() {
         let ids = window.roamAlphaAPI.q(`[
@@ -148,30 +232,8 @@ Block.prototype = {
         ]`)
         return ids.map(id => getById(id))
     },
-    getChildren: function () {
-        let uids = window.roamAlphaAPI.q(`[
-                :find [?uid ...]
-                :where
-                    [?e :block/uid "${this.uid}"]
-                    [?e :block/children ?c]
-                    [?c :block/uid ?uid]
-            ]`)
-        return uids
-            .map((uid) => new Block(uid))
-            .sort((x,y) => x.order - y.order)
-    },
     getParent: function () {
         return this.getParents().slice(-1)[0]
-    },
-    getParents: function (sorted=true) {
-        let parents = window.roamAlphaAPI.q(`[
-            :find [(pull ?p [*]) ...]
-            :where
-                [?e :block/uid "${this.uid}"]
-                [?e :block/parents ?p]
-        ]`)
-        if (sorted) parents = sortParents(parents)
-        return parents.map(obj => getById(obj.id))
     },
     getSiblingAbove: function () {
         return this.getSiblingAdjacent(-1)
@@ -187,41 +249,6 @@ Block.prototype = {
         let parent = this.getParent()
         return parent.getChildren()
     },
-    getRef: function () {
-        return `((${this.uid}))`
-    },
-    getLocation: function () {
-        let parent = this.getParent()
-        return new Location(parent.uid, this.order)
-    },
-    addChild: async function (child, idx = 0) {
-        if (child instanceof Block) {
-            await window.roamAlphaAPI.moveBlock(
-                {
-                    "location": { "parent-uid": this.uid, "order": idx },
-                    "block": { "uid": child.uid }
-                }
-            );
-            return new Block(block.uid)
-        } else {
-            return Block.create(child.toString(), new Location(this.uid, idx))
-        }
-    },
-    appendChild: async function (blockOrString) {
-        let idx = (await this.getChildren() || []).length
-        return this.addChild(blockOrString, idx)
-    },
-    getElement: function () {
-        blockContentElement = document.querySelector(`[id$="${this.uid}"]:not(.rm-inline-reference [id$="${this.uid}"])`)
-        blockContainerElement = blockContentElement.parentElement
-        while (!blockContainerElement.classList.contains("roam-block-container")) {
-            blockContainerElement = blockContainerElement.parentElement
-        }
-        return blockContainerElement
-    },
-    getTextAreaElement: function () {
-        return this.getElement().querySelector("textarea")
-    },
     getRelative: function (offset) {
         if (offset.direction === siblingDir) {
             return this.getSiblingAdjacent(offset.magnitude)
@@ -233,14 +260,31 @@ Block.prototype = {
             }
         }
     },
-    createDate: function() {
-        let timestamp = roamAlphaAPI.q(`[
-            :find ?t .
+    // Helpers
+    getProperty: function(name, namespace="block") {
+        return window.roamAlphaAPI.q(`[
+            :find ?v .
             :where
-                [?e :block/uid "${this.uid}"]
-                [?e :create/time ?t]
+                [${this.id} :${namespace}/${name} ?v]
         ]`)
-        return new Date(timestamp)
+    },
+    getPropertyList: function(name, namespace="block") {
+        return window.roamAlphaAPI.q(`[
+            :find [ ?v ... ]
+            :where
+                [${this.id} :${namespace}/${name} ?v]
+        ]`)
+    },
+    getTextAreaElement: function () {
+        return this.getElement().querySelector("textarea")
+    },
+    getElement: function () {
+        blockContentElement = document.querySelector(`[id$="${this.uid}"]:not(.rm-inline-reference [id$="${this.uid}"])`)
+        blockContainerElement = blockContentElement.parentElement
+        while (!blockContainerElement.classList.contains("roam-block-container")) {
+            blockContainerElement = blockContainerElement.parentElement
+        }
+        return blockContainerElement
     }
 }
 
@@ -249,6 +293,7 @@ function Page(idx) {
     if (idx instanceof Page) {
         // Handle idx as page object
         this.uid = idx.uid
+        this.id = idx.id
         return
     } else if (typeof(idx) === "number") {
         // Handle idx as internal id
@@ -257,38 +302,144 @@ function Page(idx) {
             throw "id ${idx} exists but isn't a Page object"
         }
         this.uid = obj[":block/uid"]
+        this.id = obj[":db/id"]
         return
     } else if (typeof(idx) === "string") {
+        let res, id, uid;
         // Handle idx as a page title
         let title = isPageRef(idx) ? pageRefToTitle(idx) : idx
-        let uid = window.roamAlphaAPI.q(`[
-            :find ?uid .
+        res = window.roamAlphaAPI.q(`[
+            :find [ ?e ?uid ]
             :where
                 [?e :node/title "${title}"]
                 [?e :block/uid ?uid]
         ]`)
-        if (uid !== null) {
+        if (res) {
+            [id, uid] = res
+            this.id = id
             this.uid = uid
             return
-        } 
+        }
         // Handle idx as uid
-        let id = window.roamAlphaAPI.q(`[
+        id = window.roamAlphaAPI.q(`[
             :find ?e .
             :where
-                [?e :block/uid "${idx}"]
                 [?e :node/title]
+                [?e :block/uid "${idx}]
         ]`)
         if (id) {
+            this.id = id
             this.uid = idx
             return
         }
     }
-    throw `identifier ${idx} is invalid for a Page`
+    throw `"${idx}" isn't a valid page id, uid, or title. If you're trying to create a new page, use Page.create("your title")`
 }
-Page.prototype = Object.create(Block.prototype)
-Page.prototype.constructor = Page;
-
-
+Page.create = async function (title) {
+    let uid = window.roamAlphaAPI.util.generateUID()
+    await window.roamAlphaAPI.createPage({page: {title: title, uid: uid}})
+    return Page(uid)
+}
+Page.prototype = {
+    ...Page.prototype,
+    // Edit 
+    update: async function (title) {
+        return await window.roamAlphaAPI
+            .updatePage(
+                {"page": { "title": title, "uid": this.uid }})
+    },
+    delete: async function () {
+        return await window.roamAlphaAPI.deletePage({"page": {"uid": this.uid }});
+    },
+    addChild: async function (blockOrString, idx = 0) {
+        let loc = new Location(this.uid, idx)
+        if (blockOrString instanceof Block) {
+            let block = blockOrString
+            await block.move(loc)
+            return block
+        } else {
+            let string = blockOrString
+            return Block.create(string.toString(), loc)
+        }
+    },
+    appendChild: async function (blockOrString) {
+        let idx = (await this.getChildren() || []).length
+        return this.addChild(blockOrString, idx)
+    },
+    // UI
+    open: async function () {
+        await window.roamAlphaAPI.ui.mainWindow.openPage(
+            {page: {uid: this.uid}}
+        )
+    },
+    // Datomic properties
+    pull: function() {
+        return window.roamAlphaAPI.pull("[*]", this.id)
+    },
+    getChildren: function () {
+        let ids = this.getPropertyList("children")
+        return ids
+            .map((id) => new Block(id))
+            .sort((x,y) => x.getOrder() - y.getOrder())
+    },
+    getTitle: function() {
+        return this.getProperty("title", "node")
+    },
+    getRefs: function() {
+        let ids = this.getPropertyList("refs")
+        return ids.map(id => getById(id))
+    },
+    getSideBar: function() {
+        return this.getProperty("sidebar", "page")
+    },
+    getCreateEmail: function() {
+        return this.getProperty("email", "create")
+    },
+    getCreateTime: function() {
+        return this.getProperty("time", "create")
+    },
+    getEditEmail: function() {
+        return this.getProperty("email", "edit")
+    },
+    getEditTime: function() {
+        return this.getProperty("time", "edit")
+    },
+    getLookup: function() {
+        let ids = this.getPropertyList("lookup", "attrs")
+        return ids.map(id => getById(id))
+    },
+    // Derived properties
+    getBackRefs: function() {
+        return getBackRefs(this.uid)
+    },
+    getCreateDate: function() {
+        return new Date(this.getCreateTime())
+    },
+    getEditDate: function() {
+        return new Date(this.getEditTime())
+    },
+    getRef: function () {
+        return `[[${this.title}]]`
+    },
+    getPageRefs: function() {
+        return this.getRefs().filter(ref => ref instanceof Page)
+    },
+    // Helpers
+    getProperty: function(name, namespace="block") {
+        return window.roamAlphaAPI.q(`[
+            :find ?v .
+            :where
+                [${this.id} :${namespace}/${name} ?v]
+        ]`)
+    },
+    getPropertyList: function(name, namespace="block") {
+        return window.roamAlphaAPI.q(`[
+            :find [ ?v ... ]
+            :where
+                [${this.id} :${namespace}/${name} ?v]
+        ]`)
+    }
+}
 
 
 // Helpers
@@ -307,6 +458,7 @@ function block(o) {
         return Block.fromLocation(loc)
     }
 }
+
 
 function blockRefToUid(blockRef) {
     return blockRef.slice(2, -2)
@@ -378,6 +530,16 @@ function getByUid(uid) {
     } else {
         return new Page(obj["uid"])
     }
+}
+
+function getBackRefs(uid) {
+    let ids = window.roamAlphaAPI.q(`[
+        :find [ ?e ... ]
+        :where
+            [?e :block/refs ?refs]
+            [?refs :block/uid "${uid}"]
+    ]`)
+    return ids.map(id => getById(id))
 }
 
 
