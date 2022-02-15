@@ -118,15 +118,12 @@ module.exports = { mv, cp, ln, rm, mk, ex, zm, ls, lk, echo, cat }
 let { isBlockRef, isPageRef, isBlockUid } = __webpack_require__(706)
 
 
-function Location(parentUid, order) {
-    this.parentUid = parentUid
-    this.order = order
-}
-
-
 function Block(idx) {
     if (idx instanceof Block) {
         this.uid = idx.uid
+    } else if (idx instanceof Location) {
+        parent = new Block(location.parentUid)
+        return parent.getChildren()[location.order]
     } else if (typeof(idx) === "number") {
         this.uid = window.roamAlphaAPI.q(`[
             :find ?uid .
@@ -148,39 +145,18 @@ function Block(idx) {
         :where
             [?e :block/uid "${this.uid}"]
     ]`)
-    // let blockAttrs = window.roamAlphaAPI.q(`[
-    //     :find (pull ?e [*]) .
-    //     :where
-    //         [?e :block/uid "${this.uid}"]
-    // ]`)
-    // for (const [attr, val] of Object.entries(blockAttrs)) {
-    //     this[attr] = val;
-    // }
-}
-Block.getByUid = function (uid) {
-    let id = window.roamAlphaAPI.q(`[
-      :find ?e .
-      :where
-         [?e :block/uid ${uid}]
-    ]`)
-    return new Block(uid)
-}
-Block.getById = function (id) {
-    let uid = window.roamAlphaAPI.q(`[
-      :find ?uid .
-      :where
-         [${id} :block/uid ?uid]
-    ]`)
-    return new Block(uid)
-}
-Block.getByLocation = function (location) {
-    parent = new Block(location.parentUid)
-    return parent.getChildren()[location.order]
 }
 Block.getFocused = function() {
     let res = roamAlphaAPI.ui.getFocusedBlock()
     if (!res) return null
     return new Block(res["block-uid"])
+}
+Block.getOpen = async function() {
+    let obj = await getOpen()
+    if (obj instanceof Block) {
+        return obj
+    }
+    return null
 }
 Block.create = async function (string = "", location=null) {
     if (!location) {
@@ -424,7 +400,7 @@ function Page(idx) {
     } else if (typeof(idx) === "string") {
         let res, id, uid;
         // Handle idx as a page title
-        let title = isPageRef(idx) ? pageRefToTitle(idx) : idx
+        let title = isPageRef(idx) ? idx.slice(2,-2) : idx
         res = window.roamAlphaAPI.q(`[
             :find [ ?e ?uid ]
             :where
@@ -456,6 +432,13 @@ Page.create = async function (title) {
     let uid = window.roamAlphaAPI.util.generateUID()
     await window.roamAlphaAPI.createPage({page: {title: title, uid: uid}})
     return Page(uid)
+}
+Page.getOpen = async function() {
+    let obj = await getOpen()
+    if (obj instanceof Block) {
+        return obj.getPage()
+    }
+    return obj
 }
 Page.prototype = {
     ...Page.prototype,
@@ -559,45 +542,11 @@ Page.prototype = {
 }
 
 
-// Helpers
-
-
-function block(o) {
-    if (isBlockUid(o) || o === ".") {
-        return new Block(o)
-    } else if (isBlockRef(o)) {
-        return new Block(blockRefToUid(o))
-    } else if (isPageTitle(o)) {
-        return new Page(o)
-    } else {
-        // assume it's a path
-        let loc = Location.fromPath(o)
-        return Block.fromLocation(loc)
-    }
+function Location(parentUid, order) {
+    this.parentUid = parentUid
+    this.order = order
 }
 
-
-function blockRefToUid(blockRef) {
-    return blockRef.slice(2, -2)
-}
-
-function blockUidToRef(blockUid) {
-    return `((${blockUid}))`
-}
-
-function pageRefToTitle(pageRef) {
-    return pageRef.slice(2, -2)
-}
-
-function isPageTitle(string) {
-    title = isPageRef(string) ? pageRefToTitle(string) : string
-    let id = window.roamAlphaAPI.q(`[
-        :find ?e .
-        :where
-            [?e :node/title "${title}"]
-    ]`)
-    return id !== null
-}
 
 function sortParents(parents) {
     let maxiters = parents.length**2
@@ -659,7 +608,10 @@ function getBackRefs(uid) {
     return ids.map(id => getById(id))
 }
 
-
+async function getOpen() {
+    let uid = await roamAlphaAPI.ui.mainWindow.getOpenPageOrBlockUid()
+    return getByUid(uid)
+}
 
 
 module.exports = { Block, Page, Location, getById, getByUid }
