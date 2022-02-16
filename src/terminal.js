@@ -42,6 +42,8 @@ RoamTerm.getFocused = function() {
 RoamTerm.prototype = {
     ...RoamTerm.prototype,
     isActive: function() {
+        if (!this.blockExists()) return false
+        if (!this.blockInView()) return false
         termElement = this.block.getElement()
         return termElement.querySelector(".rm-block-main").classList.contains("roamTerm")
     },
@@ -125,6 +127,12 @@ RoamTerm.prototype = {
         if (e.ctrlKey && e.metaKey && e.key==="ArrowDown") {
             this.updateToNext()
         }
+    },
+    blockExists: function() {
+        return this.block.exists()
+    },
+    blockInView: function() {
+        return this.block.getElement() !== null
     }
 }
 
@@ -150,18 +158,8 @@ PromptPrefix.prototype = {
 
 App = {
     prompts: {},
-    setUp: function() {
-        this.addStyle()
-        this.addCommand()
-        this.addListener()
-    },
-    tearDown: function() {
-        for (let [uid, prompt] of Object.entries(this.prompts)) {
-            this.deactivatePrompt(prompt)
-        }
-        this.removeCommand()
-        this.removeListener()
-    },
+    observer: null,
+    // Prompt stuff
     getPrompt: function(block) {
         let roamTerm = this.prompts[block.uid]
         if (!roamTerm) {
@@ -173,10 +171,19 @@ App = {
     activatePrompt: function(roamTerm) {
         roamTerm.activate()
         this.prompts[roamTerm.block.uid] = roamTerm
+        if (this.count() === 1) {
+            this.connectObserver()
+        }
     },
     deactivatePrompt: function(roamTerm) {
         roamTerm.deactivate()
         delete this.prompts[roamTerm.block.uid]
+        if (this.count() === 0) {
+            this.disconnectObserver()
+        }
+    },
+    executePrompt: function(roamTerm) {
+        roamTerm.execute()
     },
     togglePrompt: function(block) {
         const roamTerm = this.getPrompt(block)
@@ -185,6 +192,53 @@ App = {
         } else {
             this.activatePrompt(roamTerm)
         }
+    },
+    togglePromptOrExecute: function(block) {
+        const roamTerm = this.getPrompt(block)
+        if (roamTerm.isActive()) {
+            if (!roamTerm.isEmpty()) {
+                this.executePrompt(roamTerm)
+            } else {
+                this.deactivatePrompt(roamTerm)
+            }
+        } else {
+            this.activatePrompt(roamTerm)
+        }
+    },
+    // Maintain UI and state
+    update: function() {
+        for(let [uid, prompt] of Object.entries(this.prompts)) {
+            if (!prompt.blockExists()) {
+                this.deactivatePrompt(prompt)
+            } else if (!prompt.isActive() && prompt.blockInView()) {
+                this.activatePrompt(prompt)
+            }
+        }
+    },
+    connectObserver: function() {
+        const targetNode = document.querySelector('.roam-article');
+        const config = { childList: true, subtree: true };
+        this.update = this.update.bind(this)
+        this.observer = new MutationObserver(this.update);
+        this.observer.observe(targetNode, config);
+    },
+    disconnectObserver: function() {
+        if (!this.observer) return;
+        this.observer.disconnect();
+        this.observer = null;
+    },
+    // Set up and tear down  
+    setUp: function() {
+        this.addStyle()
+        this.addCommandToPallete()
+        this.addHotkeyListener()
+    },
+    tearDown: function() {
+        for (let [uid, prompt] of Object.entries(this.prompts)) {
+            this.deactivatePrompt(prompt)
+        }
+        this.removeCommandFromPallete()
+        this.removeHotkeyListener()
     },
     addStyle: function() {
         let el = document.getElementById(CSS_ID);
@@ -197,58 +251,47 @@ App = {
         document.getElementsByTagName("head")[0].appendChild(el);
         return el;
     },
-    command: function() {
+    commandPaletteCallback: function() {
         let block = Block.getFocused()
         this.togglePrompt(block)
     },
-    hotkeyListener: function(e) {
-        if (e.key === "Backspace") {
-            let b = Block.getFocused()
-            let roamTerm = this.getPrompt(b)
-            if (roamTerm.isEmpty()) {
-                this.deactivatePrompt(roamTerm)
-            }
-        }
+    hotkeyCallback: function(e) {
         if (e.ctrlKey && e.metaKey && e.key == "Enter") {
-            let b = Block.getFocused()
-            let roamTerm = this.getPrompt(b)
-            if (roamTerm.isActive()) {
-                if (!roamTerm.isEmpty()) {
-                    roamTerm.execute()
-                } else {
-                    roamTerm.deactivate()
-                }
-            } else {
-                roamTerm.activate()
-            }
+            let block = Block.getFocused()
+            this.togglePromptOrExecute(block)
         }
     },
-    addCommand: function() {
-        this.command = this.command.bind(this)
+    addCommandToPallete: function() {
+        this.commandPaletteCallback = this.commandPaletteCallback.bind(this)
         window.roamAlphaAPI.ui.commandPalette.addCommand({
             label: TERM_LABEL, 
-            callback: this.command    
+            callback: this.commandPaletteCallback    
         })
     },
-    removeCommand: function() {
+    removeCommandFromPallete: function() {
         window.roamAlphaAPI.ui.commandPalette.removeCommand({
             label: TERM_LABEL})
     },
-    addListener: function() {
-        this.hotkeyListener = this.hotkeyListener.bind(this)
+    addHotkeyListener: function() {
+        this.hotkeyCallback = this.hotkeyCallback.bind(this)
         const roamApp = document.querySelector(".roam-app") 
-        if (roamApp.dataset[TERM_ATTR] === "true") {
-            return
-        }
-        roamApp.addEventListener("keydown", this.hotkeyListener) 
-        roamApp.dataset[TERM_ATTR] = "true"
+        roamApp.addEventListener("keydown", this.hotkeyCallback) 
     },
-    removeListener: function() {
+    removeHotkeyListener: function() {
         const roamApp = document.querySelector(".roam-app") 
-        roamApp.dataset[TERM_ATTR] = "false"
-        roamApp.removeEventListener("keydown", this.hotkeyListener)
+        roamApp.removeEventListener("keydown", this.hotkeyCallback)
+    },
+    // Helpers
+    count: function() {
+        return Object.keys(this.prompts).length
     },
 }
+
+
+
+
+
+
 
 
 module.exports = { App }

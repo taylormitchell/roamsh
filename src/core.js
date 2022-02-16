@@ -263,8 +263,11 @@ Block.prototype = {
         return this.getElement().querySelector("textarea")
     },
     getElement: function () {
-        blockContentElement = document.querySelector(`[id$="${this.uid}"]:not(.rm-inline-reference [id$="${this.uid}"])`)
-        blockContainerElement = blockContentElement.parentElement
+        let blockContentElement = document.querySelector(`[id$="${this.uid}"]:not(.rm-inline-reference [id$="${this.uid}"])`)
+        if (!blockContentElement) {
+            return null
+        }
+        let blockContainerElement = blockContentElement.parentElement
         while (!blockContainerElement.classList.contains("roam-block-container")) {
             blockContainerElement = blockContainerElement.parentElement
         }

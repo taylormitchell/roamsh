@@ -61,15 +61,15 @@ async function zoomBlock(src) {
     return block.zoom()
 }
 
-async function echo(string, dst="") {
-    let dstBlock = blockFromPath(dst)
-    return dstBlock.addChild(string)
+async function echo(string, dst="/") {
+    let dstLoc = locationFromPath(dst)
+    return Block.create(string, dstLoc)
 }
 
-async function cat(src, dst="") {
+async function cat(src, dst="/") {
     let block = blockFromPath(src)
-    let dstBlock = blockFromPath(dst)
-    return dstBlock.addChild(block.getString())
+    let dstLoc = locationFromPath(dst)
+    return Block.create(block.getString(), dstLoc)
 }
 
 async function listChildren(src, dst="") {
