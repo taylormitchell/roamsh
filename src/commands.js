@@ -90,15 +90,14 @@ async function linkChildren(src, dst="") {
     }
 }
 
-// Aliases
-mv = moveBlock
-cp = copyBlock
-ln = refBlock
-rm = deleteBlock
-mk = createBlock
-ex = toggleExpandBlock
-zm = zoomBlock 
-ls = listChildren
-lk = linkChildren
+async function run(src) {
+    let codeBlock = blockFromPath(src)
+    source = codeBlock.getString().trim() 
+      .replace(new RegExp("^" + "`".repeat(3) + ".+"), "")
+      .replace(new RegExp("`".repeat(3) + "$"), "")
+      .trim();
+    return await (async () => eval(source))();
+}
 
-module.exports = { mv, cp, ln, rm, mk, ex, zm, ls, lk, echo, cat }
+
+module.exports = { createBlock, deleteBlock, moveBlock, copyBlock, refBlock, toggleExpandBlock, zoomBlock, echo, cat, listChildren, linkChildren, run }

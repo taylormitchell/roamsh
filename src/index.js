@@ -8,5 +8,18 @@ let date = require("./date")
 
 terminal.App.setUp()
 
+mv = commands.moveBlock
+cp = commands.copyBlock
+ln = commands.refBlock
+rm = commands.deleteBlock
+mk = commands.createBlock
+ex = commands.toggleExpandBlock
+zm = commands.zoomBlock 
+ls = commands.listChildren
+lk = commands.linkChildren
+echo = commands.echo
+cat = commands.cat
+run = commands.run
+
 
 module.exports = { path, graph, commands, terminal, date, core }
