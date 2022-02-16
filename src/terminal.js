@@ -80,7 +80,7 @@ RoamTerm.prototype = {
         this.commandHistory.push(source)
         await this.block.update("")
         try {
-            eval(source)
+            let res = await (async () => eval(source))()
             // rrsh = new RoamResearchShell()
             // rrsh.run(source)
         } catch (error) {
