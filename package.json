@@ -2,7 +2,7 @@
   "scripts": {
     "test": "jest test/",
     "build": "webpack",
-    "start": "webpack serve"
+    "watch": "webpack --watch"
   },
   "devDependencies": {
     "jest": "^27.5.1",

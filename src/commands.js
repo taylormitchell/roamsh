@@ -42,7 +42,7 @@ async function moveBlock(src, dst="") {
 async function copyBlock(src, dst="") {
     let srcBlock = blockFromPath(src)
     let dstLoc = locationFromPath(dst)
-    return Block.create(srcBlock.string, dstLoc)
+    return Block.create(srcBlock.getString(), dstLoc)
 }
 
 async function refBlock(src, dst="") {
@@ -69,7 +69,7 @@ async function echo(string, dst="") {
 async function cat(src, dst="") {
     let block = blockFromPath(src)
     let dstBlock = blockFromPath(dst)
-    return dstBlock.addChild(block.string)
+    return dstBlock.addChild(block.getString())
 }
 
 async function listChildren(src, dst="") {
@@ -77,7 +77,7 @@ async function listChildren(src, dst="") {
     let dstBlock = blockFromPath(dst)
     let children = srcBlock.getChildren()
     for (const child of children) {
-        await dstBlock.appendChild(child.string)
+        await dstBlock.appendChild(child.getString())
     }
 }
 

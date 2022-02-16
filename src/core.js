@@ -109,6 +109,14 @@ Block.prototype = {
             {block: {uid: this.uid}}
         )
     },
+    focus: function() {
+        return window.roamAlphaAPI.ui.setBlockFocusAndSelection(
+            {location: {
+                "block-uid": this.uid, 
+                "window-id": "main-window"
+            }
+        });
+    },
     // Datomic properties
     pull: function() {
         return window.roamAlphaAPI.pull("[*]", this.id)
@@ -183,7 +191,7 @@ Block.prototype = {
     },
     getLocation: function () {
         let parent = this.getParent()
-        return new Location(parent.uid, this.order)
+        return new Location(parent.uid, this.getOrder())
     },
     getRef: function () {
         return `((${this.uid}))`
@@ -261,6 +269,14 @@ Block.prototype = {
             blockContainerElement = blockContainerElement.parentElement
         }
         return blockContainerElement
+    },
+    exists: function() {
+        let res = window.roamAlphaAPI.q(`[
+            :find ?e .
+            :where
+                [?e :block/uid "${this.uid}"]
+        ]`)
+        return res !== null
     }
 }
 
