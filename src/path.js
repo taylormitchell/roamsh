@@ -201,7 +201,7 @@ PathInterpreter.prototype.evaluate = function() {
 
     // Traverse path
     for (var searchString of this.path.path) {
-        let res = node.getChildren().filter(({ string }) => string === searchString)
+        let res = node.getChildren().filter(child => child.getString() === searchString)
         if (res.length === 0) {
             throw new LocationNotFound(`"${searchString}" doesn't match any children of ${node.uid}`)
         }
