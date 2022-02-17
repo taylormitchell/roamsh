@@ -101,7 +101,7 @@ Block.prototype = {
     // UI
     toggleExpand: async function () {
         await window.roamAlphaAPI.updateBlock(
-            {"block": { "uid": this.uid, "open": !this.open }}
+            {"block": { "uid": this.uid, "open": !this.getOpen() }}
          );
     },
     open: async function () {
@@ -120,6 +120,12 @@ Block.prototype = {
     // Datomic properties
     pull: function() {
         return window.roamAlphaAPI.pull("[*]", this.id)
+    },
+    getUid: function() {
+        return this.uid
+    },
+    getId: function() {
+        return this.id
     },
     getChildren: function () {
         let ids = this.getPropertyList("children")
