@@ -30,56 +30,56 @@ function blockFromPath(path) {
 
 // Commands
 
-async function createBlock(string, dst="") {
+async function createBlock(string="", dst="") {
     let dstLoc = locationFromPath(dst)
-    return Block.create(string, dstLoc)
+    await Block.create(string, dstLoc)
 }
 
-async function deleteBlock(src) {
+async function deleteBlock(src="^") {
     let block = blockFromPath(src)
-    return block.delete()
+    await block.delete()
 }
 
-async function moveBlock(src, dst="") {
+async function moveBlock(src="^", dst="") {
     let srcBlock = blockFromPath(src)
     let dstLoc = locationFromPath(dst)
-    return srcBlock.move(dstLoc)
+    await srcBlock.move(dstLoc)
 }
 
-async function copyBlock(src, dst="") {
+async function copyBlock(src="^", dst="") {
     let srcBlock = blockFromPath(src)
     let dstLoc = locationFromPath(dst)
-    return Block.create(srcBlock.getString(), dstLoc)
+    await Block.create(srcBlock.getString(), dstLoc)
 }
 
-async function refBlock(src, dst="") {
+async function refBlock(src="^", dst="") {
     let srcBlock = blockFromPath(src)
     let dstLoc = locationFromPath(dst)
-    return Block.create(srcBlock.getRef(), dstLoc)
+    await Block.create(srcBlock.getRef(), dstLoc)
 }
 
-async function toggleExpandBlock(src) {
+async function toggleExpandBlock(src='^') {
     let block = blockFromPath(src)
-    return block.toggleExpand()
+    await block.toggleExpand()
 }
 
-async function zoomBlock(src) {
-    let block = blockFromPath(src)
-    return block.zoom()
+async function zoom(src='^') {
+    let blockOrPage = graph.getByPath(src) 
+    await blockOrPage.open()
 }
 
-async function echo(string, dst="/") {
+async function echo(string='', dst="/") {
     let dstLoc = locationFromPath(dst)
-    return Block.create(string, dstLoc)
+    await Block.create(string, dstLoc)
 }
 
-async function cat(src, dst="/") {
+async function cat(src='^', dst="/") {
     let block = blockFromPath(src)
     let dstLoc = locationFromPath(dst)
-    return Block.create(block.getString(), dstLoc)
+    await Block.create(block.getString(), dstLoc)
 }
 
-async function listChildren(src, dst="") {
+async function listChildren(src='^', dst="") {
     let srcBlock = blockFromPath(src)
     let dstBlock = blockFromPath(dst)
     let children = srcBlock.getChildren()
@@ -88,7 +88,7 @@ async function listChildren(src, dst="") {
     }
 }
 
-async function linkChildren(src, dst="") {
+async function linkChildren(src='^', dst="") {
     let srcBlock = blockFromPath(src)
     let dstBlock = blockFromPath(dst)
     let children = srcBlock.getChildren()
@@ -107,7 +107,7 @@ async function run(src="^") {
 }
 
 
-module.exports = { createBlock, deleteBlock, moveBlock, copyBlock, refBlock, toggleExpandBlock, zoomBlock, echo, cat, listChildren, linkChildren, run }
+module.exports = { createBlock, deleteBlock, moveBlock, copyBlock, refBlock, toggleExpandBlock, zoom, echo, cat, listChildren, linkChildren, run }
 
 /***/ }),
 
@@ -217,7 +217,7 @@ Block.prototype = {
     // UI
     toggleExpand: async function () {
         await window.roamAlphaAPI.updateBlock(
-            {"block": { "uid": this.uid, "open": !this.open }}
+            {"block": { "uid": this.uid, "open": !this.getOpen() }}
          );
     },
     open: async function () {
@@ -236,6 +236,12 @@ Block.prototype = {
     // Datomic properties
     pull: function() {
         return window.roamAlphaAPI.pull("[*]", this.id)
+    },
+    getUid: function() {
+        return this.uid
+    },
+    getId: function() {
+        return this.id
     },
     getChildren: function () {
         let ids = this.getPropertyList("children")
@@ -721,7 +727,7 @@ ln = commands.refBlock
 rm = commands.deleteBlock
 mk = commands.createBlock
 ex = commands.toggleExpandBlock
-zm = commands.zoomBlock 
+zm = commands.zoom 
 ls = commands.listChildren
 lk = commands.linkChildren
 echo = commands.echo
