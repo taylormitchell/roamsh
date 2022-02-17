@@ -68,15 +68,15 @@ async function zoomBlock(src) {
     return block.zoom()
 }
 
-async function echo(string, dst="") {
-    let dstBlock = blockFromPath(dst)
-    return dstBlock.addChild(string)
+async function echo(string, dst="/") {
+    let dstLoc = locationFromPath(dst)
+    return Block.create(string, dstLoc)
 }
 
-async function cat(src, dst="") {
+async function cat(src, dst="/") {
     let block = blockFromPath(src)
-    let dstBlock = blockFromPath(dst)
-    return dstBlock.addChild(block.getString())
+    let dstLoc = locationFromPath(dst)
+    return Block.create(block.getString(), dstLoc)
 }
 
 async function listChildren(src, dst="") {
@@ -97,18 +97,17 @@ async function linkChildren(src, dst="") {
     }
 }
 
-// Aliases
-mv = moveBlock
-cp = copyBlock
-ln = refBlock
-rm = deleteBlock
-mk = createBlock
-ex = toggleExpandBlock
-zm = zoomBlock 
-ls = listChildren
-lk = linkChildren
+async function run(src="^") {
+    let codeBlock = blockFromPath(src)
+    source = codeBlock.getString().trim() 
+      .replace(new RegExp("^" + "`".repeat(3) + ".+"), "")
+      .replace(new RegExp("`".repeat(3) + "$"), "")
+      .trim();
+    return await (async () => eval(source))();
+}
 
-module.exports = { mv, cp, ln, rm, mk, ex, zm, ls, lk, echo, cat }
+
+module.exports = { createBlock, deleteBlock, moveBlock, copyBlock, refBlock, toggleExpandBlock, zoomBlock, echo, cat, listChildren, linkChildren, run }
 
 /***/ }),
 
@@ -380,12 +379,18 @@ Block.prototype = {
         return this.getElement().querySelector("textarea")
     },
     getElement: function () {
-        blockContentElement = document.querySelector(`[id$="${this.uid}"]:not(.rm-inline-reference [id$="${this.uid}"])`)
-        blockContainerElement = blockContentElement.parentElement
+        let blockContentElement = document.querySelector(`[id$="${this.uid}"]:not(.rm-inline-reference [id$="${this.uid}"])`)
+        if (!blockContentElement) {
+            return null
+        }
+        let blockContainerElement = blockContentElement.parentElement
         while (!blockContainerElement.classList.contains("roam-block-container")) {
             blockContainerElement = blockContainerElement.parentElement
         }
         return blockContainerElement
+    },
+    isFocused: function() {
+        return this.getTextAreaElement() !== null
     },
     exists: function() {
         let res = window.roamAlphaAPI.q(`[
@@ -434,7 +439,7 @@ function Page(idx) {
             :find ?e .
             :where
                 [?e :node/title]
-                [?e :block/uid "${idx}]
+                [?e :block/uid "${idx}"]
         ]`)
         if (id) {
             this.id = id
@@ -442,7 +447,7 @@ function Page(idx) {
             return
         }
     }
-    throw `"${idx}" isn't a valid page id, uid, or title. If you're trying to create a new page, use Page.create("your title")`
+    throw `"${idx}" isn't a valid page id, uid, or title. If you're trying to create a new page, use \`Page.create("your title")\``
 }
 Page.create = async function (title) {
     let uid = window.roamAlphaAPI.util.generateUID()
@@ -535,7 +540,7 @@ Page.prototype = {
         return new Date(this.getEditTime())
     },
     getRef: function () {
-        return `[[${this.title}]]`
+        return `[[${this.getTitle()}]]`
     },
     getPageRefs: function() {
         return this.getRefs().filter(ref => ref instanceof Page)
@@ -709,6 +714,19 @@ let date = __webpack_require__(984)
 
 
 terminal.App.setUp()
+
+mv = commands.moveBlock
+cp = commands.copyBlock
+ln = commands.refBlock
+rm = commands.deleteBlock
+mk = commands.createBlock
+ex = commands.toggleExpandBlock
+zm = commands.zoomBlock 
+ls = commands.listChildren
+lk = commands.linkChildren
+echo = commands.echo
+cat = commands.cat
+run = commands.run
 
 
 module.exports = { path, graph, commands, terminal, date, core }
@@ -921,7 +939,7 @@ PathInterpreter.prototype.evaluate = function() {
 
     // Traverse path
     for (var searchString of this.path.path) {
-        let res = node.getChildren().filter(({ string }) => string === searchString)
+        let res = node.getChildren().filter(child => child.getString() === searchString)
         if (res.length === 0) {
             throw new LocationNotFound(`"${searchString}" doesn't match any children of ${node.uid}`)
         }
@@ -1536,6 +1554,7 @@ function RoamTerm(block) {
     this.current = ""
     this.commandHistory = []
     this.commandHistoryId = 0
+    this.observer = null;
 }
 RoamTerm.getFocused = function() {
     let block = Block.getFocused()
@@ -1544,67 +1563,46 @@ RoamTerm.getFocused = function() {
 }
 RoamTerm.prototype = {
     ...RoamTerm.prototype,
-    isActive: function() {
-        termElement = this.block.getElement()
-        return termElement.querySelector(".rm-block-main").classList.contains("roamTerm")
-    },
-    isEmpty: function() {
-        return this.getString() === ""
-    },
-    getString: function () {
-        if (this.block.exists()) {
-            return this.block.getTextAreaElement().value
-        }
-        return ""
-    },
+    // Verbs
     activate: function() {
-        termElement = this.block.getElement()
-        termElement.querySelector(".rm-block-main").classList.add("roamTerm")
-        promptPrefix = new PromptPrefix("~ %")
-        termElement
-            .querySelector(".controls")
-            .insertAdjacentElement("afterEnd", promptPrefix.toElement())
-        this.historyNavListener = this.historyNavListener.bind(this)
-        termElement.addEventListener("keydown", this.historyNavListener)
+        if (this.isActive()) return
+        this.addHTML()
+        this.addHotkeyListener()
+        this.connectObserver()
     },
     deactivate: function() {
-        if (!this.block.exists()) {
-            return
-        }
-        termElement = this.block.getElement()
-        termElement.querySelector(".rm-block-main").classList.remove("roamTerm")
-        let prefix = termElement.querySelector(".prompt-prefix-area")
-        if (prefix) prefix.remove()
-        termElement.removeEventListener("keydown", this.historyNavListener)
+        if (!this.isActive()) return
+        this.removeHTML()
+        this.removeHotkeyListener()
+        this.disconnectObserver()
     },
     execute: async function () {
         let textarea = this.block.getTextAreaElement()
         let source = textarea.value
         this.commandHistory.push(source)
         await this.block.update("")
+        this.commandHistoryId = 0
+        let res;
         try {
-            eval(source)
+            res = await (async () => eval(source))()
+            if (res) {
+                let out = typeof(res) === 'object' ? JSON.stringify(res, null, "\t") : res
+                await this.block.addChild(out.toString())
+            } 
             // rrsh = new RoamResearchShell()
             // rrsh.run(source)
         } catch (error) {
             this.block.addChild(error.toString())
             throw error
         }
-        // for (const out of outputs) {
-        //     await this.block.addChild(await out)
-        // }
-        this.commandHistoryId = 0
     },
     updateToPrevious: function() {
         if (this.commandHistoryId <= -this.commandHistory.length) {
             this.commandHistoryId = -this.commandHistory.length
             return
         }
-        if (this.commandHistoryId === 0) {
-            this.current = this.getString()
-        }
         this.commandHistoryId = this.commandHistoryId - 1
-        previous = this.commandHistory.slice(this.commandHistoryId)[0]
+        let previous = this.commandHistory.slice(this.commandHistoryId)[0]
         this.block.update(previous)
     },
     updateToNext: function() {
@@ -1621,13 +1619,94 @@ RoamTerm.prototype = {
         }
         this.block.update(next)
     },
-    historyNavListener: function(e) {
+    hotkeyCallback: function(e) {
+        if (e.ctrlKey && e.metaKey && e.key==="Enter") {
+            if (!this.isEmpty()) this.execute()
+        }
         if (e.ctrlKey && e.metaKey && e.key==="ArrowUp") {
             this.updateToPrevious()
         }
         if (e.ctrlKey && e.metaKey && e.key==="ArrowDown") {
             this.updateToNext()
         }
+    },
+    addHotkeyListener: function() {
+        let el = this.block.getElement()
+        this.hotkeyCallback = this.hotkeyCallback.bind(this)
+        el.addEventListener("keydown", this.hotkeyCallback)
+    },
+    removeHotkeyListener: function() {
+        let el = this.block.getElement()
+        el.removeEventListener("keydown", this.hotkeyCallback)
+    },
+    addHTML: function() {
+        let termElement = this.block.getElement()
+        termElement.querySelector(".rm-block-main").classList.add("roamTerm")
+        let prefix = new PromptPrefix("~ %")
+        termElement
+            .querySelector(".controls")
+            .insertAdjacentElement("afterEnd", prefix.toElement())
+        this.update()
+
+    },
+    removeHTML: function() {
+        termElement = this.block.getElement()
+        termElement.querySelector(".rm-block-main").classList.remove("roamTerm")
+        let prefix = termElement.querySelector(".prompt-prefix-area")
+        if (prefix) prefix.remove()
+    },
+    // Properties
+    blockExists: function() {
+        return this.block.exists()
+    },
+    blockInView: function() {
+        return this.block.getElement() !== null
+    },
+    blockIsFocused: function() {
+        return this.block.isFocused()
+    },
+    isActive: function() {
+        if (!this.blockExists()) return false
+        if (!this.blockInView()) return false
+        termElement = this.block.getElement()
+        return termElement.querySelector(".rm-block-main").classList.contains("roamTerm")
+    },
+    isEmpty: function() {
+        return this.getString() === ""
+    },
+    getString: function () {
+        if (this.blockIsFocused()) {
+            return this.block.getTextAreaElement().value
+        } else {
+            return this.block.getElement().innerText
+        }
+    },
+    // Maintain UI
+    update: function() {
+        this.current = this.getString()
+        let prefix = this.getPrefixElement()
+        let input = this.getInputElement() 
+        prefix.style.height = input.style.height 
+    },
+    connectObserver: function() {
+        const targetNode = this.block.getElement();
+        const config = { childList: true, subtree: true };
+        this.update = this.update.bind(this)
+        this.observer = new MutationObserver(this.update);
+        this.observer.observe(targetNode, config);
+    },
+    disconnectObserver: function() {
+        if (!this.observer) return;
+        this.observer.disconnect();
+        this.observer = null;
+    },
+    getPrefixElement: function() {
+        let el = this.block.getElement()
+        return el ? el.querySelector(".prompt-prefix-area") : null
+    },
+    getInputElement: function() {
+        let el = this.block.getElement()
+        return el ? el.querySelector(".rm-block__input") : null
     }
 }
 
@@ -1653,18 +1732,8 @@ PromptPrefix.prototype = {
 
 App = {
     prompts: {},
-    setUp: function() {
-        this.addStyle()
-        this.addCommand()
-        this.addListener()
-    },
-    tearDown: function() {
-        for (let [uid, prompt] of Object.entries(this.prompts)) {
-            this.deactivatePrompt(prompt)
-        }
-        this.removeCommand()
-        this.removeListener()
-    },
+    observer: null,
+    // Prompt stuff
     getPrompt: function(block) {
         let roamTerm = this.prompts[block.uid]
         if (!roamTerm) {
@@ -1676,10 +1745,19 @@ App = {
     activatePrompt: function(roamTerm) {
         roamTerm.activate()
         this.prompts[roamTerm.block.uid] = roamTerm
+        if (this.count() === 1) {
+            this.connectObserver()
+        }
     },
     deactivatePrompt: function(roamTerm) {
         roamTerm.deactivate()
         delete this.prompts[roamTerm.block.uid]
+        if (this.count() === 0) {
+            this.disconnectObserver()
+        }
+    },
+    executePrompt: function(roamTerm) {
+        roamTerm.execute()
     },
     togglePrompt: function(block) {
         const roamTerm = this.getPrompt(block)
@@ -1688,6 +1766,53 @@ App = {
         } else {
             this.activatePrompt(roamTerm)
         }
+    },
+    togglePromptOrExecute: function(block) {
+        const roamTerm = this.getPrompt(block)
+        if (roamTerm.isActive()) {
+            if (!roamTerm.isEmpty()) {
+                this.executePrompt(roamTerm)
+            } else {
+                this.deactivatePrompt(roamTerm)
+            }
+        } else {
+            this.activatePrompt(roamTerm)
+        }
+    },
+    // Maintain UI and state
+    update: function() {
+        for(let [uid, prompt] of Object.entries(this.prompts)) {
+            if (!prompt.blockExists()) {
+                this.deactivatePrompt(prompt)
+            } else if (!prompt.isActive() && prompt.blockInView()) {
+                this.activatePrompt(prompt)
+            }
+        }
+    },
+    connectObserver: function() {
+        const targetNode = document.querySelector('.roam-article');
+        const config = { childList: true, subtree: true };
+        this.update = this.update.bind(this)
+        this.observer = new MutationObserver(this.update);
+        this.observer.observe(targetNode, config);
+    },
+    disconnectObserver: function() {
+        if (!this.observer) return;
+        this.observer.disconnect();
+        this.observer = null;
+    },
+    // Set up and tear down  
+    setUp: function() {
+        this.addStyle()
+        this.addCommandToPallete()
+        this.addHotkeyListener()
+    },
+    tearDown: function() {
+        for (let [uid, prompt] of Object.entries(this.prompts)) {
+            this.deactivatePrompt(prompt)
+        }
+        this.removeCommandFromPallete()
+        this.removeHotkeyListener()
     },
     addStyle: function() {
         let el = document.getElementById(CSS_ID);
@@ -1700,58 +1825,57 @@ App = {
         document.getElementsByTagName("head")[0].appendChild(el);
         return el;
     },
-    command: function() {
+    commandPaletteCallback: function() {
         let block = Block.getFocused()
-        this.togglePrompt(block)
-    },
-    hotkeyListener: function(e) {
-        if (e.key === "Backspace") {
-            let b = Block.getFocused()
-            let roamTerm = this.getPrompt(b)
-            if (roamTerm.isEmpty()) {
-                this.deactivatePrompt(roamTerm)
-            }
+        const roamTerm = this.getPrompt(block)
+        if (roamTerm.isActive()) {
+            this.deactivatePrompt(roamTerm)
+        } else {
+            this.activatePrompt(roamTerm)
         }
+    },
+    hotkeyCallback: function(e) {
         if (e.ctrlKey && e.metaKey && e.key == "Enter") {
-            let b = Block.getFocused()
-            let roamTerm = this.getPrompt(b)
-            if (roamTerm.isActive()) {
-                if (!roamTerm.isEmpty()) {
-                    roamTerm.execute()
-                } else {
-                    roamTerm.deactivate()
-                }
+            let block = Block.getFocused()
+            const roamTerm = this.getPrompt(block)
+            if (roamTerm.isActive() && roamTerm.isEmpty()) {
+                this.deactivatePrompt(roamTerm)
             } else {
-                roamTerm.activate()
+                this.activatePrompt(roamTerm)
             }
         }
     },
-    addCommand: function() {
-        this.command = this.command.bind(this)
+    addCommandToPallete: function() {
+        this.commandPaletteCallback = this.commandPaletteCallback.bind(this)
         window.roamAlphaAPI.ui.commandPalette.addCommand({
             label: TERM_LABEL, 
-            callback: this.command    
+            callback: this.commandPaletteCallback    
         })
     },
-    removeCommand: function() {
+    removeCommandFromPallete: function() {
         window.roamAlphaAPI.ui.commandPalette.removeCommand({
             label: TERM_LABEL})
     },
-    addListener: function() {
-        this.hotkeyListener = this.hotkeyListener.bind(this)
+    addHotkeyListener: function() {
+        this.hotkeyCallback = this.hotkeyCallback.bind(this)
         const roamApp = document.querySelector(".roam-app") 
-        if (roamApp.dataset[TERM_ATTR] === "true") {
-            return
-        }
-        roamApp.addEventListener("keydown", this.hotkeyListener) 
-        roamApp.dataset[TERM_ATTR] = "true"
+        roamApp.addEventListener("keydown", this.hotkeyCallback) 
     },
-    removeListener: function() {
+    removeHotkeyListener: function() {
         const roamApp = document.querySelector(".roam-app") 
-        roamApp.dataset[TERM_ATTR] = "false"
-        roamApp.removeEventListener("keydown", this.hotkeyListener)
+        roamApp.removeEventListener("keydown", this.hotkeyCallback)
+    },
+    // Helpers
+    count: function() {
+        return Object.keys(this.prompts).length
     },
 }
+
+
+
+
+
+
 
 
 module.exports = { App }
