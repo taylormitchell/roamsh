@@ -323,7 +323,7 @@ function Page(idx) {
             :find ?e .
             :where
                 [?e :node/title]
-                [?e :block/uid "${idx}]
+                [?e :block/uid "${idx}"]
         ]`)
         if (id) {
             this.id = id
@@ -331,7 +331,7 @@ function Page(idx) {
             return
         }
     }
-    throw `"${idx}" isn't a valid page id, uid, or title. If you're trying to create a new page, use Page.create("your title")`
+    throw `"${idx}" isn't a valid page id, uid, or title. If you're trying to create a new page, use \`Page.create("your title")\``
 }
 Page.create = async function (title) {
     let uid = window.roamAlphaAPI.util.generateUID()
@@ -424,7 +424,7 @@ Page.prototype = {
         return new Date(this.getEditTime())
     },
     getRef: function () {
-        return `[[${this.title}]]`
+        return `[[${this.getTitle()}]]`
     },
     getPageRefs: function() {
         return this.getRefs().filter(ref => ref instanceof Page)

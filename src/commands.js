@@ -90,7 +90,7 @@ async function linkChildren(src, dst="") {
     }
 }
 
-async function run(src) {
+async function run(src="^") {
     let codeBlock = blockFromPath(src)
     source = codeBlock.getString().trim() 
       .replace(new RegExp("^" + "`".repeat(3) + ".+"), "")

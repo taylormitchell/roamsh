@@ -60,20 +60,20 @@ RoamTerm.prototype = {
         let source = textarea.value
         this.commandHistory.push(source)
         await this.block.update("")
+        this.commandHistoryId = 0
         let res;
         try {
             res = await (async () => eval(source))()
-            if (res) await this.block.addChild(res.toString())
+            if (res) {
+                let out = typeof(res) === 'object' ? JSON.stringify(res, null, "\t") : res
+                await this.block.addChild(out.toString())
+            } 
             // rrsh = new RoamResearchShell()
             // rrsh.run(source)
         } catch (error) {
             this.block.addChild(error.toString())
             throw error
         }
-        // for (const out of outputs) {
-        //     await this.block.addChild(await out)
-        // }
-        this.commandHistoryId = 0
     },
     updateToPrevious: function() {
         if (this.commandHistoryId <= -this.commandHistory.length) {
@@ -81,7 +81,7 @@ RoamTerm.prototype = {
             return
         }
         this.commandHistoryId = this.commandHistoryId - 1
-        previous = this.commandHistory.slice(this.commandHistoryId)[0]
+        let previous = this.commandHistory.slice(this.commandHistoryId)[0]
         this.block.update(previous)
     },
     updateToNext: function() {
