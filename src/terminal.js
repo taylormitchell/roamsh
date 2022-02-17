@@ -1,5 +1,6 @@
 let { RoamResearchShell } = require('./shell');
 let { Block, Page, Roam } = require('./graph');
+const configs = require('./configs');
 // let { mv, cp, ln, rm, mk, ex, zm, ls, lk, echo, cat } = require('./commands');
 
 const TERM_LABEL = "roamsh: Terminal"
@@ -15,16 +16,15 @@ const CSS = `
 .roamTerm .prompt-prefix-area {
     background-color: rgb(235, 232, 232);
     display: flex;
-    flex: 0 0 35px;
     margin-top: -1px;
-    height: 29px;
+    flex: 0 0 auto;
     padding-top: 4px;
     padding-left: 4px;
+    padding-right: 4px;
     border-radius: 5px 0 0 5px;
 
 }
 `
-PAGE_NAME_HISTORY = typeof(PAGE_NAME_HISTORY) === "undefined" ? "RoamTerm_history" : PAGE_NAME_HISTORY
 
 
 function RoamTerm(block) {
@@ -34,6 +34,7 @@ function RoamTerm(block) {
     this.commandHistory = []
     this.commandHistoryId = 0
     this.observer = null;
+    this.interpret = CommandInterpreters[configs.ROAMSH_INTERPRETER]
 }
 RoamTerm.getFocused = function() {
     let block = Block.getFocused()
@@ -56,24 +57,25 @@ RoamTerm.prototype = {
         this.disconnectObserver()
     },
     execute: async function () {
-        let textarea = this.block.getTextAreaElement()
-        let source = textarea.value
-        this.commandHistory.push(source)
-        await this.block.update("")
+        let command = this.getCommand()
+        this.commandHistory.push(command)
         this.commandHistoryId = 0
+        await this.block.update("");
         let res;
         try {
-            res = await (async () => eval(source))()
+            res = await this.interpret(command)
             if (res && typeof(res) !== "function") {
                 let out = typeof(res) === 'object' ? JSON.stringify(res, null, "\t") : res
                 await this.block.addChild(out.toString())
             }
-            // rrsh = new RoamResearchShell()
-            // rrsh.run(source)
         } catch (error) {
             this.block.addChild(error.toString())
             throw error
         }
+    },
+    getCommand: function() {
+        let textarea = this.block.getTextAreaElement()
+        return textarea.value
     },
     updateToPrevious: function() {
         if (this.commandHistoryId <= -this.commandHistory.length) {
@@ -121,7 +123,7 @@ RoamTerm.prototype = {
     addHTML: function() {
         let termElement = this.block.getElement()
         termElement.querySelector(".rm-block-main").classList.add("roamTerm")
-        let prefix = new PromptPrefix("~ %")
+        let prefix = new PromptPrefix(configs.ROAMSH_PREFIX)
         termElement
             .querySelector(".controls")
             .insertAdjacentElement("afterEnd", prefix.toElement())
@@ -206,6 +208,15 @@ PromptPrefix.prototype = {
         prefixArea.appendChild(prefixContent)
         return prefixArea
     }
+}
+
+
+CommandInterpreters = {
+    "js": async (source) => eval(source),
+    "rrsh": async function (source) {
+        let rrsh = new RoamResearchShell()
+        return rrsh.run(source)
+    } 
 }
 
 

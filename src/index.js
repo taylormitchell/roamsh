@@ -4,6 +4,7 @@ let core = require("./core")
 let commands = require("./commands") 
 let terminal = require("./terminal") 
 let date = require("./date") 
+let configs = require("./configs") 
 
 
 terminal.App.setUp()
@@ -22,4 +23,4 @@ cat = commands.cat
 run = commands.run
 
 
-module.exports = { path, graph, commands, terminal, date, core }
+module.exports = { path, graph, commands, terminal, date, core, configs }

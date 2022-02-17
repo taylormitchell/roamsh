@@ -27,7 +27,6 @@ configs = {
     ROAMSH_INTERPRETER: "js"
 }
 configs.ROAMSH_PREFIX = `(${configs.ROAMSH_INTERPRETER}) ~ %` 
-
 // Replace defaults with any user defined values
 if (typeof(window) !== "undefined") {
     for(let [key, value] of Object.entries(configs)) {

@@ -1,3 +1,20 @@
+let commands = require('./commands') 
+
+
+const supportedCommands = {
+    mv: commands.moveBlock,
+    cp: commands.copyBlock,
+    ln: commands.refBlock,
+    rm: commands.deleteBlock,
+    mk: commands.createBlock,
+    ex: commands.toggleExpandBlock,
+    zm: commands.zoom ,
+    ls: commands.listChildren,
+    lk: commands.linkChildren,
+    echo: commands.echo,
+    cat: commands.cat,
+    run: commands.run,
+}
 
 function RoamResearchShell() {
     this.hadError = false;
@@ -335,14 +352,19 @@ Interpreter.prototype = {
         return func(...args)
     },
     getCommand: function(cmd) {
-        try {
-            var func = eval(cmd)
-            if (!(func instanceof Function)) throw new ReferenceError()
-        } catch (e) {
-            if (e instanceof ReferenceError) {
-                throw new RuntimeError(`command not found: ${cmd}`)
-            } 
-            throw e
+        // try {
+        //     var func = eval(cmd)
+        //     let func = supportedCommands[cmd]
+        //     if (!(func instanceof Function)) throw new ReferenceError()
+        // } catch (e) {
+        //     if (e instanceof ReferenceError) {
+        //         throw new RuntimeError(`command not found: ${cmd}`)
+        //     } 
+        //     throw e
+        // }
+        let func = supportedCommands[cmd]
+        if (!func) {
+            throw new RuntimeError(`command not supported: ${cmd}`)
         }
         return func
         
