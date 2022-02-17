@@ -74,6 +74,7 @@ Block.prototype = {
             }
          );
     },
+    
     delete: async function () {
         await window.roamAlphaAPI.deleteBlock(
             {
@@ -97,6 +98,20 @@ Block.prototype = {
     appendChild: async function (blockOrString) {
         let idx = (await this.getChildren() || []).length
         return this.addChild(blockOrString, idx)
+    },
+    copy: async function(location, opts = {recursive: true, reference: false}) {
+        let string = opts.reference ? this.getRef() : this.getString() 
+        let block = await Block.create(string, location)
+        if(!opts.recursive) return
+        for(let [i, child] of this.getChildren().entries()) {
+            await child.copy(new Location(block.uid, i), opts)
+        }
+    },
+    copyChildren: async function(location, opts = {recursive: true, reference: false}) {
+        for (let child of this.getChildren()) {
+            await child.copy(location, opts)
+            location.order += 1
+        }
     },
     // UI
     toggleExpand: async function () {
@@ -198,6 +213,10 @@ Block.prototype = {
     getLocation: function () {
         let parent = this.getParent()
         return new Location(parent.uid, this.getOrder())
+    },
+    getNextChildLocation: function() {
+        let children = this.getChildren()
+        return new Location(this.uid, children.length)
     },
     getRef: function () {
         return `((${this.uid}))`
@@ -340,9 +359,11 @@ function Page(idx) {
     throw `"${idx}" isn't a valid page id, uid, or title. If you're trying to create a new page, use \`Page.create("your title")\``
 }
 Page.create = async function (title) {
-    let uid = window.roamAlphaAPI.util.generateUID()
-    await window.roamAlphaAPI.createPage({page: {title: title, uid: uid}})
-    return Page(uid)
+    if (!Page.exists(title)) {
+        let uid = window.roamAlphaAPI.util.generateUID()
+        await window.roamAlphaAPI.createPage({page: {title: title, uid: uid}})
+    }
+    return Page(title)
 }
 Page.getOpen = async function() {
     let obj = await getOpen()
@@ -351,6 +372,14 @@ Page.getOpen = async function() {
     }
     return obj
 }
+Page.exists = function(title) {
+    let res = window.roamAlphaAPI.q(`[
+        :find ?e .
+        :where
+            [?e :node/title "${title}"]
+    ]`)
+    return res !== null
+},
 Page.prototype = {
     ...Page.prototype,
     // Edit 

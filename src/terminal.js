@@ -64,10 +64,10 @@ RoamTerm.prototype = {
         let res;
         try {
             res = await (async () => eval(source))()
-            if (res) {
+            if (res && typeof(res) !== "function") {
                 let out = typeof(res) === 'object' ? JSON.stringify(res, null, "\t") : res
                 await this.block.addChild(out.toString())
-            } 
+            }
             // rrsh = new RoamResearchShell()
             // rrsh.run(source)
         } catch (error) {

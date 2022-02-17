@@ -46,10 +46,11 @@ async function moveBlock(src="^", dst="") {
     await srcBlock.move(dstLoc)
 }
 
-async function copyBlock(src="^", dst="") {
+async function copyBlock(src="^", dst="", opts = {recursive: true}) {
     let srcBlock = blockFromPath(src)
     let dstLoc = locationFromPath(dst)
-    await Block.create(srcBlock.getString(), dstLoc)
+    // await Block.create(srcBlock.getString(), dstLoc)
+    await srcBlock.copy(dstLoc, opts)
 }
 
 async function refBlock(src="^", dst="") {
@@ -189,6 +190,13 @@ Block.prototype = {
                 "block": { "uid": this.uid }
             }
          );
+    },
+    copy: async function(location, opts = {recursive: true}) {
+        let block = await Block.create(this.getString(), location)
+        if(!opts.recursive) return block
+        for(let [i, child] of this.getChildren().entries()) {
+            await child.copy(new Location(block.uid, i), opts)
+        }
     },
     delete: async function () {
         await window.roamAlphaAPI.deleteBlock(
@@ -456,9 +464,11 @@ function Page(idx) {
     throw `"${idx}" isn't a valid page id, uid, or title. If you're trying to create a new page, use \`Page.create("your title")\``
 }
 Page.create = async function (title) {
-    let uid = window.roamAlphaAPI.util.generateUID()
-    await window.roamAlphaAPI.createPage({page: {title: title, uid: uid}})
-    return Page(uid)
+    if (!Page.exists(title)) {
+        let uid = window.roamAlphaAPI.util.generateUID()
+        await window.roamAlphaAPI.createPage({page: {title: title, uid: uid}})
+    }
+    return Page(title)
 }
 Page.getOpen = async function() {
     let obj = await getOpen()
@@ -467,6 +477,14 @@ Page.getOpen = async function() {
     }
     return obj
 }
+Page.exists = function(title) {
+    let res = window.roamAlphaAPI.q(`[
+        :find ?e .
+        :where
+            [?e :node/title "${title}"]
+    ]`)
+    return res !== null
+},
 Page.prototype = {
     ...Page.prototype,
     // Edit 
@@ -688,6 +706,7 @@ module.exports = { toRoamString }
 
 var { Block, Page, Location, getById, getByUid } = __webpack_require__(895) 
 var { Path } = __webpack_require__(61) 
+var { toRoamString } = __webpack_require__(984) 
 
 
 function getByPath(pathString) {
@@ -704,7 +723,21 @@ function get(string) {
     throw `${string} isn't a valid internal id, uid, or path`
 }
 
-module.exports = { Block, Page, Location, getById, getByUid, getByPath, get }
+function getDailyNote(date = new Date()) {
+    let title = toRoamString(date)
+    return new Page(title)
+}
+
+async function asyncDailyNote(date = new Date()) {
+    let title = toRoamString(date)
+    if (Page.exists(title)) {
+        return new Page(title)
+    } else {
+        return Page.create(title) // async
+    }
+}
+
+module.exports = { Block, Page, Location, getById, getByUid, getByPath, get, getDailyNote, asyncDailyNote }
 
 /***/ }),
 

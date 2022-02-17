@@ -39,10 +39,11 @@ async function moveBlock(src="^", dst="") {
     await srcBlock.move(dstLoc)
 }
 
-async function copyBlock(src="^", dst="") {
+async function copyBlock(src="^", dst="", opts = {recursive: true}) {
     let srcBlock = blockFromPath(src)
     let dstLoc = locationFromPath(dst)
-    await Block.create(srcBlock.getString(), dstLoc)
+    // await Block.create(srcBlock.getString(), dstLoc)
+    await srcBlock.copy(dstLoc, opts)
 }
 
 async function refBlock(src="^", dst="") {
@@ -72,22 +73,15 @@ async function cat(src='^', dst="/") {
     await Block.create(block.getString(), dstLoc)
 }
 
-async function listChildren(src='^', dst="") {
+async function listChildren(src='^', dst='/', opts = {recursive: true}) {
     let srcBlock = blockFromPath(src)
-    let dstBlock = blockFromPath(dst)
-    let children = srcBlock.getChildren()
-    for (const child of children) {
-        await dstBlock.appendChild(child.getString())
-    }
+    let dstLoc = locationFromPath(dst)
+    await srcBlock.copyChildren(dstLoc, opts)
 }
 
-async function linkChildren(src='^', dst="") {
-    let srcBlock = blockFromPath(src)
-    let dstBlock = blockFromPath(dst)
-    let children = srcBlock.getChildren()
-    for (const child of children) {
-        await dstBlock.appendChild(child.getRef())
-    }
+async function linkChildren(src='^', dst="/", opts = {recursive: true}) {
+    opts.reference = true;
+    listChildren(src, dst, opts)
 }
 
 async function run(src="^") {

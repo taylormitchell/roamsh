@@ -1,5 +1,6 @@
 var { Block, Page, Location, getById, getByUid } = require("./core") 
 var { Path } = require("./path") 
+var { toRoamString } = require("./date") 
 
 
 function getByPath(pathString) {
@@ -16,4 +17,18 @@ function get(string) {
     throw `${string} isn't a valid internal id, uid, or path`
 }
 
-module.exports = { Block, Page, Location, getById, getByUid, getByPath, get }
+function getDailyNote(date = new Date()) {
+    let title = toRoamString(date)
+    return new Page(title)
+}
+
+async function asyncDailyNote(date = new Date()) {
+    let title = toRoamString(date)
+    if (Page.exists(title)) {
+        return new Promise(res => res(new Page(title)))
+    } else {
+        return Page.create(title) // returns a promise
+    }
+}
+
+module.exports = { Block, Page, Location, getById, getByUid, getByPath, get, getDailyNote, asyncDailyNote }
