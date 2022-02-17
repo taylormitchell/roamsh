@@ -273,6 +273,9 @@ Block.prototype = {
         }
         return blockContainerElement
     },
+    isFocused: function() {
+        return this.getTextAreaElement() !== null
+    },
     exists: function() {
         let res = window.roamAlphaAPI.q(`[
             :find ?e .

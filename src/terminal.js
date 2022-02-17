@@ -60,8 +60,10 @@ RoamTerm.prototype = {
         let source = textarea.value
         this.commandHistory.push(source)
         await this.block.update("")
+        let res;
         try {
-            let res = await (async () => eval(source))()
+            res = await (async () => eval(source))()
+            if (res) await this.block.addChild(res.toString())
             // rrsh = new RoamResearchShell()
             // rrsh.run(source)
         } catch (error) {
@@ -139,6 +141,9 @@ RoamTerm.prototype = {
     blockInView: function() {
         return this.block.getElement() !== null
     },
+    blockIsFocused: function() {
+        return this.block.isFocused()
+    },
     isActive: function() {
         if (!this.blockExists()) return false
         if (!this.blockInView()) return false
@@ -149,10 +154,11 @@ RoamTerm.prototype = {
         return this.getString() === ""
     },
     getString: function () {
-        if (this.block.exists()) {
+        if (this.blockIsFocused()) {
             return this.block.getTextAreaElement().value
+        } else {
+            return this.block.getElement().innerText
         }
-        return ""
     },
     // Maintain UI
     update: function() {
