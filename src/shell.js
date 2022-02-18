@@ -43,14 +43,14 @@ RoamResearchShell.prototype = {
         this.run(source)
         this.hadError = false;
     },
-    run: function(source) {
+    run: async function(source) {
         var scanner = new Scanner(source);
         var tokens = scanner.scanTokens();
         // if (hadError) throw new Error("");
         var parser = new Parser(tokens)
         var expression = parser.parse()
         var interpreter = new Interpreter()
-        interpreter.interpret(expression)
+        return await interpreter.interpret(expression)
     }
 }
 
@@ -341,15 +341,14 @@ RuntimeError.prototype.constructor = RuntimeError
 function Interpreter() {}
 Interpreter.prototype = {
     ...Interpreter.prototype,
-    interpret: function(expr) {
-        let value = this.evaluate(expr)
-        console.log(value)
+    interpret: async function(expr) {
+        return await this.evaluate(expr)
     },
-    visitCommand: function(expr) {
+    visitCommand: async function(expr) {
         var terms = expr.expressions.map(expr => this.evaluate(expr))
         var func = this.getCommand(terms[0])
         var args = terms.slice(1)
-        return func(...args)
+        return await func(...args)
     },
     getCommand: function(cmd) {
         // try {

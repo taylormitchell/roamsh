@@ -1,6 +1,7 @@
 let path = require("./path") 
 let graph = require("./graph") 
 let core = require("./core") 
+let { Block, Page, Location } = require("./core") 
 let commands = require("./commands") 
 let terminal = require("./terminal") 
 let date = require("./date") 
@@ -23,4 +24,4 @@ cat = commands.cat
 run = commands.run
 
 
-module.exports = { path, graph, commands, terminal, date, core, configs }
+module.exports = { path, graph, commands, terminal, date, core, configs, ...core}

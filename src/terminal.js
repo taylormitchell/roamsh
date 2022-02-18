@@ -215,7 +215,7 @@ CommandInterpreters = {
     "js": async (source) => eval(source),
     "rrsh": async function (source) {
         let rrsh = new RoamResearchShell()
-        return rrsh.run(source)
+        return await rrsh.run(source)
     } 
 }
 
