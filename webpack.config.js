@@ -2,13 +2,13 @@ const path = require('path');
 const webpack = require('webpack')
 
 module.exports = {
-  entry: './src/index.js',
+  entry: './src/roamsh.js',
   output: {
-    filename: 'main.js',
+    filename: 'roamsh.js',
     path: path.resolve(__dirname, 'dist'),
     library: ['roamsh']
   },
-//   mode: 'development',
+  mode: 'development',
   optimization: {
     minimize: false
   },
