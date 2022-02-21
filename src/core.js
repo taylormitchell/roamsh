@@ -308,6 +308,9 @@ Block.prototype = {
                 [?e :block/uid "${this.uid}"]
         ]`)
         return res !== null
+    },
+    toEmbed: function() {
+        return `{{[[embed]]: ${this.getRef()}}}` 
     }
 }
 
