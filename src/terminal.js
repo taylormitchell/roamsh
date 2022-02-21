@@ -167,7 +167,7 @@ RoamTerm.prototype = {
         this.current = this.getString()
         let prefix = this.getPrefixElement()
         let input = this.getInputElement() 
-        prefix.style.height = input.style.height 
+        prefix.style.height = input.clientHeight + "px" 
     },
     connectObserver: function() {
         const targetNode = this.block.getElement();
