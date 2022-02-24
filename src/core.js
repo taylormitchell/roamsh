@@ -552,9 +552,9 @@ function getBackRefs(uid) {
 }
 
 async function getOpen() {
-    let uid = await roamAlphaAPI.ui.mainWindow.getOpenPageOrBlockUid()
+    let uid = await window.roamAlphaAPI.ui.mainWindow.getOpenPageOrBlockUid()
     return getByUid(uid)
 }
 
 
-module.exports = { Block, Page, Location, getById, getByUid }
+module.exports = { Block, Page, Location, getById, getByUid, getOpen }

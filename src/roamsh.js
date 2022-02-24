@@ -10,18 +10,17 @@ let configs = require("./configs")
 
 terminal.App.setUp()
 
-mv = commands.moveBlock
-cp = commands.copyBlock
-ln = commands.refBlock
-rm = commands.deleteBlock
-mk = commands.createBlock
-ex = commands.toggleExpandBlock
-zm = commands.zoom 
-ls = commands.listChildren
-lk = commands.linkChildren
+mv = moveBlock = commands.moveBlock
+cp = copyBlock = commands.copyBlock
+ln = refBlock = commands.refBlock
+rm = deleteBlock = commands.deleteBlock
+mk = createBlock = commands.createBlock
+ex = toggleBlock = commands.toggleBlock
+zm = zoom = commands.zoom 
+ls = listChildren = commands.listChildren
+lk = linkChildren = commands.linkChildren
 echo = commands.echo
 cat = commands.cat
 run = commands.run
-
 
 module.exports = { path, graph, commands, terminal, date, core, configs, ...core}

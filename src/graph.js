@@ -1,4 +1,4 @@
-var { Block, Page, Location, getById, getByUid } = require("./core") 
+var { Block, Page, Location, getById, getByUid, getOpen } = require("./core") 
 var { Path } = require("./path") 
 var { toRoamString } = require("./date") 
 
@@ -31,4 +31,14 @@ async function asyncDailyNote(date = new Date()) {
     }
 }
 
-module.exports = { Block, Page, Location, getById, getByUid, getByPath, get, getDailyNote, asyncDailyNote }
+async function getOpenPage() {
+    let obj = await getOpen()
+    if (obj instanceof Page) {
+        return obj
+    } else {
+        return obj.getPage()
+    }
+}
+
+
+module.exports = { Block, Page, Location, getById, getByUid, getOpen, getOpenPage, getByPath, get, getDailyNote, asyncDailyNote }

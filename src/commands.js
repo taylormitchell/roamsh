@@ -52,7 +52,7 @@ async function refBlock(src="^", dst="") {
     await Block.create(srcBlock.getRef(), dstLoc)
 }
 
-async function toggleExpandBlock(src='^') {
+async function toggleBlock(src='^') {
     let block = blockFromPath(src)
     await block.toggleExpand()
 }
@@ -94,4 +94,4 @@ async function run(src="^") {
 }
 
 
-module.exports = { createBlock, deleteBlock, moveBlock, copyBlock, refBlock, toggleExpandBlock, zoom, echo, cat, listChildren, linkChildren, run }
+module.exports = { createBlock, deleteBlock, moveBlock, copyBlock, refBlock, toggleBlock, zoom, echo, cat, listChildren, linkChildren, run }
