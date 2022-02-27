@@ -107,7 +107,7 @@ Parser.prototype = {
     },
     advance: function(x = 1) {
         if(typeof(x) === "number") {
-            chars = this.string.slice(this.current, this.current + x)
+            let chars = this.string.slice(this.current, this.current + x)
             this.current += chars.length
             return chars
         } else if(typeof(x) === "string") {

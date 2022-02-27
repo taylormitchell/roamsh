@@ -12,6 +12,19 @@ test("handleEmptyString", () => {
     expect(paths).toEqual([])
 })
 
+test("escape", () => {
+    let parser = new PathParser("^\\.")
+    let path = parser.parse()
+    let steps = path.value.slice(1)
+    expect(steps.length).toEqual(1)
+    expect(steps[0].value).toEqual(".")
+    parser = new PathParser("^\\")
+    path = parser.parse()
+    steps = path.value.slice(1)
+    expect(steps.length).toEqual(1)
+    expect(steps[0].value).toEqual("\\")
+})
+
 test('invalidStep', () => {
     expect(() => new Path("[[page]]x")).toThrow()
     expect(new Path("[[page]]^")).toBeInstanceOf(Path)

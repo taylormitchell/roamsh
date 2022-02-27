@@ -110,8 +110,15 @@ PathParser.prototype.tokenizeStep = function() {
     }
     // Get step selector string
     let stepSelector = "";
-    while (!this.isAtEnd() && !this.check("^", "$", "/", ".")) {
-        stepSelector += this.advance()
+    while (!this.isAtEnd()) {
+        let escapedChar = this.escape()
+        if(escapedChar !== null) {
+            stepSelector += escapedChar
+        } else if(this.check("^", "$", "/", ".")) {
+            break
+        } else {
+            stepSelector += this.advance(1)
+        }
     }
 
     // Create step token
@@ -127,6 +134,16 @@ PathParser.prototype.tokenizeStep = function() {
     }
     return new Token(type, lexeme, value, tokenStart)
 }
+PathParser.prototype.escape = function() {
+    if(!this.advance('\\')) {
+        return null;
+    }
+    if(this.isAtEnd()) {
+        return '\\'
+    }
+    return this.advance()
+}
+
 PathParser.prototype.error = function(message, stepIndex, errorIndex, errorLength) {
     if (stepIndex && errorIndex) {
         errorLength = errorLength || 1
