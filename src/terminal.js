@@ -60,18 +60,31 @@ RoamTerm.prototype = {
         let command = this.getCommand()
         this.commandHistory.push(command)
         this.commandHistoryId = 0
-        await this.block.update("");
+        if(configs.ROAMSH_CLEAR) {
+            await this.block.update("");
+        }
         let res;
         try {
             res = await this.interpret(command)
             if (res && typeof(res) !== "function") {
-                let out = typeof(res) === 'object' ? JSON.stringify(res, null, "\t") : res
+                let out;
+                if(typeof(res) === 'object') {
+                    out = JSON.stringify(res, null, "\t")
+                    out = '`'.repeat(3) + 'javascript\n' + out + '`'.repeat(3)
+                } else {
+                    out = res
+                }
                 await this.block.addChild(out.toString())
             }
         } catch (error) {
-            this.block.addChild(error.toString())
-            throw error
+            this.reportError(error)
+            
         }
+    },
+    reportError(error) {
+        errorCodeBlock = "`".repeat(3) + "plain text\n" + error.toString() + "`".repeat(3)
+        this.block.addChild(errorCodeBlock)
+        throw error
     },
     getCommand: function() {
         let textarea = this.block.getTextAreaElement()
@@ -360,12 +373,5 @@ App = {
         return Object.keys(this.prompts).length
     },
 }
-
-
-
-
-
-
-
 
 module.exports = { App }
