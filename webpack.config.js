@@ -12,6 +12,4 @@ module.exports = {
   optimization: {
     minimize: false
   },
-  // devtool: 'eval-source-map',
-  // plugins: [new webpack.SourceMapDevToolPlugin({})]
 };

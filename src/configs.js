@@ -24,7 +24,8 @@ configs = {
 
     }
     `,
-    ROAMSH_INTERPRETER: "js"
+    ROAMSH_INTERPRETER: "js",
+    ROAMSH_CLEAR: false
 }
 configs.ROAMSH_PREFIX = `(${configs.ROAMSH_INTERPRETER}) ~ %` 
 // Replace defaults with any user defined values
