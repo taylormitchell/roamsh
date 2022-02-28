@@ -8,7 +8,7 @@ let date = require("./date")
 let configs = require("./configs") 
 
 
-terminal.App.setUp()
+terminal.Terminal.setUp()
 
 mv = moveBlock = commands.moveBlock
 cp = copyBlock = commands.copyBlock

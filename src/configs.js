@@ -1,11 +1,9 @@
-
-
 // Defaults
 configs = {
-    TERM_LABEL: "roamsh: Terminal",
-    TERM_ATTR: "roamshTermListener",
-    CSS_ID: "roam-term",
-    CSS: `
+    ROAMSH_TERM_LABEL: "Roam Shell: Terminal",
+    ROAMSH_TERM_ATTR: "roamshTermListener",
+    ROAMSH_CSS_ID: "roam-term",
+    ROAMSH_CSS: `
     .roamTerm .rm-block-text
     {
         background-color: rgb(235, 232, 232);
@@ -28,6 +26,7 @@ configs = {
     ROAMSH_CLEAR: false
 }
 configs.ROAMSH_PREFIX = `(${configs.ROAMSH_INTERPRETER}) ~ %` 
+
 // Replace defaults with any user defined values
 if (typeof(window) !== "undefined") {
     for(let [key, value] of Object.entries(configs)) {

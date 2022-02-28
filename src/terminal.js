@@ -1,33 +1,17 @@
 let { RoamResearchShell } = require('./shell');
 let { Block, Page, Roam } = require('./graph');
 const configs = require('./configs');
-// let { mv, cp, ln, rm, mk, ex, zm, ls, lk, echo, cat } = require('./commands');
 
-const TERM_LABEL = "roamsh: Terminal"
-const TERM_ATTR = "roamshTermListener"
-const CSS_ID = "roam-term"
-const CSS = `
-.roamTerm .rm-block-text
-{
-    background-color: rgb(235, 232, 232);
-    border-radius: 0 5px 5px 0;
+
+CommandInterpreters = {
+    "js": async (source) => eval(source),
+    "rrsh": async function (source) {
+        let rrsh = new RoamResearchShell()
+        return await rrsh.run(source)
+    } 
 }
 
-.roamTerm .prompt-prefix-area {
-    background-color: rgb(235, 232, 232);
-    display: flex;
-    margin-top: -1px;
-    flex: 0 0 auto;
-    padding-top: 4px;
-    padding-left: 4px;
-    padding-right: 4px;
-    border-radius: 5px 0 0 5px;
-
-}
-`
-
-
-function RoamTerm(block) {
+function Prompt(block) {
     this.block = block
     this.uid = this.block.uid
     this.current = ""
@@ -36,13 +20,13 @@ function RoamTerm(block) {
     this.observer = null;
     this.interpret = CommandInterpreters[configs.ROAMSH_INTERPRETER]
 }
-RoamTerm.getFocused = function() {
+Prompt.getFocused = function() {
     let block = Block.getFocused()
     if (!block) return null
-    return new RoamTerm(block)
+    return new Prompt(block)
 }
-RoamTerm.prototype = {
-    ...RoamTerm.prototype,
+Prompt.prototype = {
+    ...Prompt.prototype,
     // Verbs
     activate: function() {
         if (this.isActive()) return
@@ -136,18 +120,28 @@ RoamTerm.prototype = {
     addHTML: function() {
         let termElement = this.block.getElement()
         termElement.querySelector(".rm-block-main").classList.add("roamTerm")
-        let prefix = new PromptPrefix(configs.ROAMSH_PREFIX)
+        let prefix = this.createPrefixElement(configs.ROAMSH_PREFIX)
         termElement
             .querySelector(".controls")
-            .insertAdjacentElement("afterEnd", prefix.toElement())
+            .insertAdjacentElement("afterEnd", prefix)
         this.update()
-
     },
     removeHTML: function() {
         termElement = this.block.getElement()
         termElement.querySelector(".rm-block-main").classList.remove("roamTerm")
         let prefix = termElement.querySelector(".prompt-prefix-area")
         if (prefix) prefix.remove()
+    },
+    createPrefixElement: function(string) {
+        prefixElement = document.createElement("div")
+        prefixElement.classList.add("prompt-prefix-area")
+        prefixContent = document.createElement("div")
+        prefixContent.classList.add("prompt-prefix-str")
+        prefixStr = document.createElement("span")
+        prefixStr.innerText = string
+        prefixContent.appendChild(prefixStr)
+        prefixElement.appendChild(prefixContent)
+        return prefixElement
     },
     // Properties
     blockExists: function() {
@@ -205,42 +199,14 @@ RoamTerm.prototype = {
 }
 
 
-function PromptPrefix(string) {
-    this.string = string
-}
-PromptPrefix.prototype = {
-    ...PromptPrefix.prototype,
-    toElement: function () {
-        prefixArea = document.createElement("div")
-        prefixArea.classList.add("prompt-prefix-area")
-        prefixContent = document.createElement("div")
-        prefixContent.classList.add("prompt-prefix-str")
-        prefixStr = document.createElement("span")
-        prefixStr.innerText = this.string
-        prefixContent.appendChild(prefixStr)
-        prefixArea.appendChild(prefixContent)
-        return prefixArea
-    }
-}
-
-
-CommandInterpreters = {
-    "js": async (source) => eval(source),
-    "rrsh": async function (source) {
-        let rrsh = new RoamResearchShell()
-        return await rrsh.run(source)
-    } 
-}
-
-
-App = {
+Terminal = {
     prompts: {},
     observer: null,
     // Prompt stuff
     getPrompt: function(block) {
         let roamTerm = this.prompts[block.uid]
         if (!roamTerm) {
-            roamTerm = new RoamTerm(block)
+            roamTerm = new Prompt(block)
             this.prompts[block.uid] = roamTerm
         }
         return roamTerm
@@ -318,13 +284,13 @@ App = {
         this.removeHotkeyListener()
     },
     addStyle: function() {
-        let el = document.getElementById(CSS_ID);
+        let el = document.getElementById(configs.ROAMSH_CSS_ID);
         if (el) {
             return el
         }
         el = document.createElement("style");
-        el.textContent = CSS;
-        el.id = CSS_ID
+        el.textContent = configs.ROAMSH_CSS;
+        el.id = configs.ROAMSH_CSS_ID
         document.getElementsByTagName("head")[0].appendChild(el);
         return el;
     },
@@ -351,22 +317,22 @@ App = {
     addCommandToPallete: function() {
         this.commandPaletteCallback = this.commandPaletteCallback.bind(this)
         window.roamAlphaAPI.ui.commandPalette.addCommand({
-            label: TERM_LABEL, 
+            label: configs.ROAMSH_TERM_LABEL, 
             callback: this.commandPaletteCallback    
         })
     },
     removeCommandFromPallete: function() {
         window.roamAlphaAPI.ui.commandPalette.removeCommand({
-            label: TERM_LABEL})
+            label: configs.ROAMSH_TERM_LABEL})
     },
     addHotkeyListener: function() {
         this.hotkeyCallback = this.hotkeyCallback.bind(this)
-        const roamApp = document.querySelector(".roam-app") 
-        roamApp.addEventListener("keydown", this.hotkeyCallback) 
+        const roamTerminal = document.querySelector(".roam-app") 
+        roamTerminal.addEventListener("keydown", this.hotkeyCallback) 
     },
     removeHotkeyListener: function() {
-        const roamApp = document.querySelector(".roam-app") 
-        roamApp.removeEventListener("keydown", this.hotkeyCallback)
+        const roamTerminal = document.querySelector(".roam-app") 
+        roamTerminal.removeEventListener("keydown", this.hotkeyCallback)
     },
     // Helpers
     count: function() {
@@ -374,4 +340,4 @@ App = {
     },
 }
 
-module.exports = { App }
+module.exports = { Terminal }
