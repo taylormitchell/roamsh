@@ -51,7 +51,7 @@ function argToBlock(arg) {
 
 async function createBlock(string="", dst="") {
     let dstLoc = argToLocation(dst)
-    await Block.create(string, dstLoc)
+    await Block.create(string.toString(), dstLoc)
 }
 
 async function deleteBlock(src="^") {
@@ -147,4 +147,4 @@ function loadUserCommands(recursive=true) {
 loadUserCommands()
 
 
-module.exports = { createBlock, deleteBlock, moveBlock, copyBlock, refBlock, toggleBlock, zoom, echo, cat, listChildren, linkChildren, run, loadUserCommands }
+module.exports = { createBlock, deleteBlock, moveBlock, copyBlock, refBlock, toggleBlock, zoom, echo, cat, listChildren, linkChildren, run, loadUserCommands, argToLocation, argToBlock }
