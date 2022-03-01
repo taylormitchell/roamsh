@@ -1,5 +1,6 @@
 let { Block, Page, Location } = require('./graph');
 let graph = require('./graph');
+let configs = require('./configs');
 
 
 function locationFromPath(path) {
@@ -93,5 +94,32 @@ async function run(src="^") {
     return await (async () => eval(source))();
 }
 
+// Run all code blocks under user paths
+function loadUserCommands(recursive=true) {
+    function isCodeBlock(node) {
+        string = node.getString()
+        return string.startsWith('`'.repeat(3) + 'javascript') &&
+               string.endsWith('`'.repeat(3))
+    }
 
-module.exports = { createBlock, deleteBlock, moveBlock, copyBlock, refBlock, toggleBlock, zoom, echo, cat, listChildren, linkChildren, run }
+    function runCommandsBelow(node, recursive=true) {
+        for(let child of node.getChildren()) {
+            if(isCodeBlock(child)) {
+              run(child.getRef())
+            }
+            if(recursive) {
+              runCommandsBelow(child)
+            }
+        }
+    }
+
+    for(let path of configs.ROAMSH_PATHS) {
+        let node = graph.get(path)
+        if(!node) continue
+        runCommandsBelow(node, recursive)
+    }
+}
+loadUserCommands()
+
+
+module.exports = { createBlock, deleteBlock, moveBlock, copyBlock, refBlock, toggleBlock, zoom, echo, cat, listChildren, linkChildren, run, loadUserCommands }
