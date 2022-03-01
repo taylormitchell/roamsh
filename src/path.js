@@ -1,5 +1,5 @@
 let { isBlockRef, isPageRef, getPageRefAtIndex, PageRefParser, BlockRefParser, Parser, ParserError, Token } = require("./str") 
-let { Block, Page, Location } = require("./core") 
+let { Block, Page, Location, NotFoundError } = require("./core") 
 
 ROOT_CHAR = "~"
 PARENT_CHAR = "."
@@ -158,18 +158,6 @@ PathParser.prototype.error = function(message, stepIndex, errorIndex, errorLengt
     return new ParserError(message)
 }
 
-function LocationNotFound(message) {
-    instance = new Error(message);
-    instance.name = 'LocationNotFound';
-    Object.setPrototypeOf(instance, Object.getPrototypeOf(this));
-    if (Error.captureStackTrace) {
-        Error.captureStackTrace(instance, LocationNotFound);
-      }
-    return instance;
-}
-LocationNotFound.prototype = Object.create(Error.prototype)
-LocationNotFound.prototype.constructor = LocationNotFound
-
 function PathInterpreter(path) {
     if (!(path instanceof Path)) {
         path = new Path(path)
@@ -182,14 +170,14 @@ PathInterpreter.prototype.error = function(message, token) {
         pointer = " ".repeat(token.index) + "^".repeat(token.lexeme.length)
         message += "\n\n" + string + "\n" + pointer
     }
-    throw LocationNotFound(message)
+    throw NotFoundError(message)
 }
 PathInterpreter.prototype.evaluate = function() {
     // Go to start
     var node;
     switch (this.path.start.type) {
         case Token.TYPES.START_ROOT:
-            throw new LocationNotFound(`No support for paths starting at ${path.start} yet :(`);
+            throw new NotFoundError(`No support for paths starting at ${path.start} yet :(`);
         case Token.TYPES.START_FOCUSED:
             node = Block.getFocused();
             break;
@@ -200,7 +188,7 @@ PathInterpreter.prototype.evaluate = function() {
             node = new Block(this.path.start.lexeme);
             break;
         default:
-            throw new LocationNotFound(`Invalid path start: ${this.path.start}`);
+            throw new NotFoundError(`Invalid path start: ${this.path.start}`);
     }
 
     // Follow steps
@@ -230,7 +218,7 @@ PathInterpreter.prototype.evaluate = function() {
             } else {
                 let matches = children.filter(child => child.getString() === step.value)
                 if (matches.length === 0) {
-                    throw new LocationNotFound(`"${step.value}" doesn't match any children of ${node.uid}`)
+                    throw new NotFoundError(`"${step.value}" doesn't match any children of ${node.uid}`)
                 }
                 node = matches[0]
             }
@@ -246,7 +234,7 @@ PathInterpreter.prototype.evaluate = function() {
             } else {
                 let matches = parents.filter(p => p.getString() === step.value)
                 if (matches.length === 0) {
-                    throw new LocationNotFound(`"${step.value}" doesn't match any parents of ${node.uid}`)
+                    throw new NotFoundError(`"${step.value}" doesn't match any parents of ${node.uid}`)
                 }
                 node = matches[0]
             }

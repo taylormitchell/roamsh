@@ -1,34 +1,67 @@
-var { Block, Page, Location, getById, getByUid, getOpen } = require("./core") 
+var { Block, Page, Location, NotFoundError, getById, getByUid, getOpen } = require("./core") 
 var { Path } = require("./path") 
+var { ParserError } = require("./str") 
 var { toRoamString } = require("./date") 
 
-
 function getByPath(pathString) {
-    let path = new Path(pathString)
-    return path.evaluate()
+    try {
+        let path = new Path(pathString)
+        return path.evaluate()
+    } catch (e) {
+        if(e instanceof NotFoundError) {
+            return null
+        }
+        throw e
+    }
 }
 
 function getPage(idx) {
-    return new Page(idx)
+    try {
+        return new Page(idx)
+    } catch (e) {
+        if(e instanceof NotFoundError) {
+            return null
+        }
+        throw e
+    }
 }
 
 function getBlock(idx) {
-    return new Block(idx)
-}
-
-function get(string) {
-    for (let f of [getBlock, getPage, getByPath]) {
-        try {
-            return f(string)
-        } catch (e) {}
+    try {
+        return new Block(idx)
+    } catch (e) {
+        if(e instanceof NotFoundError) {
+            return null
+        }
+        throw e
     }
-    throw `${string} isn't a valid internal id, uid, or path`
 }
 
 function getDailyNote(date = new Date()) {
     let title = toRoamString(date)
-    return new Page(title)
+    return getPage(title)
 }
+
+function get(idx) {
+    let res;
+    if(idx instanceof Date) {
+        return getDailyNote(idx)
+    } else if (res = getBlock(idx)) {
+        return res
+    } else if (res = getPage(idx)) {
+        return res
+    } else {
+        try {
+            return getByPath(idx)
+        } catch (e) {
+            if(e instanceof ParserError) {
+                return null
+            }
+            throw e
+        }
+    }
+}
+
 
 async function asyncDailyNote(date = new Date()) {
     let title = toRoamString(date)
@@ -49,4 +82,4 @@ async function getOpenPage() {
 }
 
 
-module.exports = { Block, Page, Location, getById, getByUid, getOpen, getOpenPage, getPage, getBlock, getByPath, get, getDailyNote, asyncDailyNote }
+module.exports = { Block, Page, Location, getOpen, getOpenPage, getPage, getBlock, getByPath, get, getDailyNote, asyncDailyNote }

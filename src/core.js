@@ -1,6 +1,18 @@
 let { isBlockRef, isPageRef, isBlockUid } = require("./str")
 
 
+function NotFoundError(message) {
+    instance = new Error(message);
+    instance.name = 'NotFoundError';
+    Object.setPrototypeOf(instance, Object.getPrototypeOf(this));
+    if (Error.captureStackTrace) {
+        Error.captureStackTrace(instance, NotFoundError);
+      }
+    return instance;
+}
+NotFoundError.prototype = Object.create(Error.prototype)
+NotFoundError.prototype.constructor = NotFoundError
+
 function Block(idx) {
     if (idx instanceof Block) {
         this.uid = idx.uid
@@ -22,7 +34,7 @@ function Block(idx) {
             this.uid = roamAlphaAPI.ui.getFocusedBlock()["block-uid"]
         }
     }
-    if (!this.uid) throw `${idx} isn't a valid id, uid, or block`
+    if (!this.uid) throw new NotFoundError(`${idx} isn't a valid id, uid, or block`)
     this.id = window.roamAlphaAPI.q(`[
         :find ?e .
         :where
@@ -322,7 +334,6 @@ Block.prototype = {
     }
 }
 
-
 function Page(idx) {
     if (idx instanceof Page) {
         // Handle idx as page object
@@ -333,7 +344,7 @@ function Page(idx) {
         // Handle idx as internal id
         let obj = window.roamAlphaAPI.pull("[*]", idx)
         if (obj[":node/title"] === undefined) {
-            throw "id ${idx} exists but isn't a Page object"
+            throw new NotFoundError("id ${idx} exists but isn't a Page object")
         }
         this.uid = obj[":block/uid"]
         this.id = obj[":db/id"]
@@ -367,7 +378,7 @@ function Page(idx) {
             return
         }
     }
-    throw `"${idx}" isn't a valid page id, uid, or title. If you're trying to create a new page, use \`Page.create("your title")\``
+    throw new NotFoundError(`"${idx}" isn't a valid page id, uid, or title. If you're trying to create a new page, use \`Page.create("your title")\``)
 }
 Page.create = async function (title) {
     if (!Page.exists(title)) {
@@ -566,4 +577,4 @@ async function getOpen() {
 }
 
 
-module.exports = { Block, Page, Location, getById, getByUid, getOpen }
+module.exports = { Block, Page, Location, getById, getByUid, getOpen, NotFoundError }

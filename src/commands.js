@@ -4,7 +4,7 @@ let configs = require('./configs');
 
 
 function locationFromPath(path) {
-    var res = graph.getByPath(path)
+    let res = graph.getByPath(path)
     if (res instanceof Page) {
         throw `Destination can't be a page: ${path}`
     } else if (res instanceof Block) {
@@ -15,7 +15,7 @@ function locationFromPath(path) {
 }
 
 function blockFromPath(path) {
-    var res = graph.getByPath(path) 
+    let res = graph.getByPath(path) 
     if (!(res instanceof Block)) {
         throw `Not a block: ${path}`
     }
@@ -114,7 +114,7 @@ function loadUserCommands(recursive=true) {
     }
 
     for(let path of configs.ROAMSH_PATHS) {
-        let node = graph.get(path)
+        let node = graph.getByPath(path)
         if(!node) continue
         runCommandsBelow(node, recursive)
     }
