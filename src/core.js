@@ -171,6 +171,7 @@ Block.prototype = {
     getPage: function() {
         let id = this.getProperty("page")
         return new Page(id)
+
     },
     getHeading: function() {
         return this.getProperty("heading")
@@ -221,7 +222,7 @@ Block.prototype = {
     getRef: function () {
         return `((${this.uid}))`
     },
-    getPageRefs: function() {
+    getPageRefs: function(inherit=true) {
         let ids = window.roamAlphaAPI.q(`[
             :find [ ?r ... ]
             :where
@@ -229,7 +230,14 @@ Block.prototype = {
                 [?e :block/refs ?r]
                 [?r :node/title]
         ]`)
-        return ids.map(id => getById(id))
+        let refs = ids.map(id => getById(id))
+        if(inherit) {
+            let parents = this.getParents()
+            refsInParents = parents.map(p => p.getPageRefs(false)).flat()
+            refs = refs.concat(refsInParents) 
+            refs.push(parents[0])
+        }
+        return [...new Set(refs)]
     },
     getBlockRefs: function() {
         let ids = window.roamAlphaAPI.q(`[
@@ -465,7 +473,8 @@ Page.prototype = {
         return `[[${this.getTitle()}]]`
     },
     getPageRefs: function() {
-        return this.getRefs().filter(ref => ref instanceof Page)
+        let refs = this.getRefs().filter(ref => ref instanceof Page)
+        return refs
     },
     // Helpers
     getProperty: function(name, namespace="block") {
