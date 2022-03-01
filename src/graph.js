@@ -8,8 +8,16 @@ function getByPath(pathString) {
     return path.evaluate()
 }
 
+function getPage(idx) {
+    return new Page(idx)
+}
+
+function getBlock(idx) {
+    return new Block(idx)
+}
+
 function get(string) {
-    for (let f of [(s) => new Block(s), (s) => new Page(s), getByPath]) {
+    for (let f of [getBlock, getPage, getByPath]) {
         try {
             return f(string)
         } catch (e) {}
@@ -41,4 +49,4 @@ async function getOpenPage() {
 }
 
 
-module.exports = { Block, Page, Location, getById, getByUid, getOpen, getOpenPage, getByPath, get, getDailyNote, asyncDailyNote }
+module.exports = { Block, Page, Location, getById, getByUid, getOpen, getOpenPage, getPage, getBlock, getByPath, get, getDailyNote, asyncDailyNote }

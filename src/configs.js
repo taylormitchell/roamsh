@@ -1,6 +1,6 @@
 // Defaults
 configs = {
-    ROAMSH_TERM_LABEL: "Roam Shell: Terminal",
+    ROAMSH_TERM_LABEL: "Roam Shell: Toggle Prompt",
     ROAMSH_TERM_ATTR: "roamshTermListener",
     ROAMSH_CSS_ID: "roam-term",
     ROAMSH_CSS: `
@@ -23,7 +23,7 @@ configs = {
     }
     `,
     ROAMSH_INTERPRETER: "js",
-    ROAMSH_CLEAR: false
+    ROAMSH_CLEAR: true,
 }
 configs.ROAMSH_PREFIX = `(${configs.ROAMSH_INTERPRETER}) ~ %` 
 
