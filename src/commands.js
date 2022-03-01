@@ -88,9 +88,9 @@ async function zoom(src='^') {
     await blockOrPage.open()
 }
 
-async function echo(string='', dst="/") {
+async function echo(arg, dst="/") {
     let dstLoc = argToLocation(dst)
-    await Block.create(string, dstLoc)
+    await Block.create(arg.toString(), dstLoc)
 }
 
 async function cat(src='^', dst="/") {
