@@ -374,7 +374,7 @@ Page.create = async function (title) {
         let uid = window.roamAlphaAPI.util.generateUID()
         await window.roamAlphaAPI.createPage({page: {title: title, uid: uid}})
     }
-    return Page(title)
+    return new Page(title)
 }
 Page.getOpen = async function() {
     let obj = await getOpen()
