@@ -18,11 +18,13 @@ function argToLocation(arg) {
     // Get location from node
     if (node instanceof Block) {
         return new Location(node.getParent().uid, node.getOrder())
+    } else if (node instanceof Location) {
+        return node
     } else if (node instanceof Page) {
         throw `Argument must be a Page or a Path to a Page. `
               `The given path "${arg}" lead to a node of type ${typeof(arg)}.`
     } else {
-        throw new InternalError(`Can't get location from type ${typeof(node)}`)
+        throw `Can't get location from type ${typeof(node)}`
     }
 }
 
