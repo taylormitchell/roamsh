@@ -13,7 +13,7 @@ function argToLocation(arg) {
     } else if(arg instanceof Block) {
         node = arg
     } else {
-        node = graph.getByPath(path.toString())
+        node = graph.getByPath(arg.toString())
     }
     // Get location from node
     if (node instanceof Block) {
