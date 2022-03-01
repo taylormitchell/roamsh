@@ -3,58 +3,81 @@ let graph = require('./graph');
 let configs = require('./configs');
 
 
-function locationFromPath(path) {
-    let res = graph.getByPath(path)
-    if (res instanceof Page) {
-        throw `Destination can't be a page: ${path}`
-    } else if (res instanceof Block) {
-        return new Location(res.getParent().uid, res.getOrder())
+function argToLocation(arg) {
+    // Get node from arg
+    let node;
+    if(arg instanceof Location) {
+        return arg 
+    } else if(arg instanceof Page) {
+        throw `Can't get Location from Page`
+    } else if(arg instanceof Block) {
+        node = arg
     } else {
-        return res
+        node = graph.getByPath(path.toString())
+    }
+    // Get location from node
+    if (node instanceof Block) {
+        return new Location(node.getParent().uid, node.getOrder())
+    } else if (node instanceof Page) {
+        throw `Argument must be a Page or a Path to a Page. `
+              `The given path "${arg}" lead to a node of type ${typeof(arg)}.`
+    } else {
+        throw new InternalError(`Can't get location from type ${typeof(node)}`)
     }
 }
 
-function blockFromPath(path) {
-    let res = graph.getByPath(path) 
-    if (!(res instanceof Block)) {
-        throw `Not a block: ${path}`
+function argToBlock(arg) {
+    let node;
+    if(arg instanceof Block) {
+        return arg
+    } else if(arg instanceof Location) {
+        return new Block(arg)
+    } else if(typeof(arg) === 'string') {
+        node = graph.getByPath(arg)
+        if(node instanceof Block) {
+            return node
+        }
+        throw `Argument must be a Block or a Path to a block. `
+              `The given path "${arg}" lead to a node of type ${typeof(arg)}.`
+    } else {
+        throw `Argument must be a Block or a Path to a block. `
+              `The given arg "${arg}" has type ${typeof(arg)}.`
     }
-    return res
 }
 
 // Commands
 
 async function createBlock(string="", dst="") {
-    let dstLoc = locationFromPath(dst)
+    let dstLoc = argToLocation(dst)
     await Block.create(string, dstLoc)
 }
 
 async function deleteBlock(src="^") {
-    let block = blockFromPath(src)
+    let block = argToBlock(src)
     await block.delete()
 }
 
 async function moveBlock(src="^", dst="") {
-    let srcBlock = blockFromPath(src)
-    let dstLoc = locationFromPath(dst)
+    let srcBlock = argToBlock(src)
+    let dstLoc = argToLocation(dst)
     await srcBlock.move(dstLoc)
 }
 
 async function copyBlock(src="^", dst="", opts = {recursive: true}) {
-    let srcBlock = blockFromPath(src)
-    let dstLoc = locationFromPath(dst)
+    let srcBlock = argToBlock(src)
+    let dstLoc = argToLocation(dst)
     // await Block.create(srcBlock.getString(), dstLoc)
     await srcBlock.copy(dstLoc, opts)
 }
 
 async function refBlock(src="^", dst="") {
-    let srcBlock = blockFromPath(src)
-    let dstLoc = locationFromPath(dst)
-    await Block.create(srcBlock.getRef(), dstLoc)
+    let srcBlock = argToBlock(src)
+    let dstLoc = argToLocation(dst)
+    await Block.create(srcBlock.toRef(), dstLoc)
 }
 
 async function toggleBlock(src='^') {
-    let block = blockFromPath(src)
+    let block = argToBlock(src)
     await block.toggleExpand()
 }
 
@@ -64,19 +87,19 @@ async function zoom(src='^') {
 }
 
 async function echo(string='', dst="/") {
-    let dstLoc = locationFromPath(dst)
+    let dstLoc = argToLocation(dst)
     await Block.create(string, dstLoc)
 }
 
 async function cat(src='^', dst="/") {
-    let block = blockFromPath(src)
-    let dstLoc = locationFromPath(dst)
+    let block = argToBlock(src)
+    let dstLoc = argToLocation(dst)
     await Block.create(block.getString(), dstLoc)
 }
 
 async function listChildren(src='^', dst='/', opts = {recursive: true}) {
-    let srcBlock = blockFromPath(src)
-    let dstLoc = locationFromPath(dst)
+    let srcBlock = argToBlock(src)
+    let dstLoc = argToLocation(dst)
     await srcBlock.copyChildren(dstLoc, opts)
 }
 
@@ -86,7 +109,7 @@ async function linkChildren(src='^', dst="/", opts = {recursive: true}) {
 }
 
 async function run(src="^") {
-    let codeBlock = blockFromPath(src)
+    let codeBlock = argToBlock(src)
     source = codeBlock.getString().trim() 
       .replace(new RegExp("^" + "`".repeat(3) + ".+"), "")
       .replace(new RegExp("`".repeat(3) + "$"), "")
@@ -105,7 +128,7 @@ function loadUserCommands(recursive=true) {
     function runCommandsBelow(node, recursive=true) {
         for(let child of node.getChildren()) {
             if(isCodeBlock(child)) {
-              run(child.getRef())
+              run(child.toRef())
             }
             if(recursive) {
               runCommandsBelow(child)

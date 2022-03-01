@@ -112,7 +112,7 @@ Block.prototype = {
         return this.addChild(blockOrString, idx)
     },
     copy: async function(location, opts = {recursive: true, reference: false}) {
-        let string = opts.reference ? this.getRef() : this.getString() 
+        let string = opts.reference ? this.toRef() : this.getString() 
         let block = await Block.create(string, location)
         if(!opts.recursive) return
         for(let [i, child] of this.getChildren().entries()) {
@@ -227,11 +227,14 @@ Block.prototype = {
         let parent = this.getParent()
         return new Location(parent.uid, this.getOrder())
     },
+    getFirstChildLocation: function() {
+        return new Location(this.uid, 0)
+    },
     getNextChildLocation: function() {
         let children = this.getChildren()
         return new Location(this.uid, children.length)
     },
-    getRef: function () {
+    toRef: function () {
         return `((${this.uid}))`
     },
     getPageRefs: function(inherit=true) {
@@ -330,7 +333,7 @@ Block.prototype = {
         return res !== null
     },
     toEmbed: function() {
-        return `{{[[embed]]: ${this.getRef()}}}` 
+        return `{{[[embed]]: ${this.toRef()}}}` 
     }
 }
 
@@ -480,7 +483,14 @@ Page.prototype = {
     getEditDate: function() {
         return new Date(this.getEditTime())
     },
-    getRef: function () {
+    getFirstChildLocation: function() {
+        return new Location(this.uid, 0)
+    },
+    getNextChildLocation: function() {
+        let children = this.getChildren()
+        return new Location(this.uid, children.length)
+    },
+    toRef: function () {
         return `[[${this.getTitle()}]]`
     },
     getPageRefs: function() {
