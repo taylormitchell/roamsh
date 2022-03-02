@@ -22,6 +22,7 @@ lk = linkChildren = commands.linkChildren
 echo = commands.echo
 cat = commands.cat
 run = commands.run
+js = commands.js
 
 // Load user commands defined in configs.ROAMSH_PATHS
 commands.loadUserCommands()

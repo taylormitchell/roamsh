@@ -1,20 +1,20 @@
-let commands = require('./commands') 
-
-
-const supportedCommands = {
-    mv: commands.moveBlock,
-    cp: commands.copyBlock,
-    ln: commands.refBlock,
-    rm: commands.deleteBlock,
-    mk: commands.createBlock,
-    ex: commands.toggleExpandBlock,
-    zm: commands.zoom ,
-    ls: commands.listChildren,
-    lk: commands.linkChildren,
-    echo: commands.echo,
-    cat: commands.cat,
-    run: commands.run,
-}
+//let commands = require('./commands') 
+//
+//
+//const supportedCommands = {
+//    mv: commands.moveBlock,
+//    cp: commands.copyBlock,
+//    ln: commands.refBlock,
+//    rm: commands.deleteBlock,
+//    mk: commands.createBlock,
+//    ex: commands.toggleExpandBlock,
+//    zm: commands.zoom ,
+//    ls: commands.listChildren,
+//    lk: commands.linkChildren,
+//    echo: commands.echo,
+//    cat: commands.cat,
+//    run: commands.run,
+//}
 
 function RoamResearchShell() {
     this.hadError = false;
@@ -28,21 +28,6 @@ RoamResearchShell.report = function(index, message) {
 }
 RoamResearchShell.prototype = {
     ...RoamResearchShell.prototype,
-    main: function(args) {
-        if (args.length > 1) {
-            console.log("Usage: RoamScript [script]");
-            return
-        } else if (args.length == 1) {
-            runFile(args[0])
-        } else {
-            runPrompt();
-        }
-    },
-    runPrompt: function() {
-        // TODO
-        this.run(source)
-        this.hadError = false;
-    },
     run: async function(source) {
         var scanner = new Scanner(source);
         var tokens = scanner.scanTokens();
@@ -58,7 +43,7 @@ RoamResearchShell.prototype = {
 
 const tokenTypeList = [
     "BACKSLASH", "SPACE", "SEMI_COLON",
-    "QUOTE_DOUBLE", "QUOTE_SINGLE",
+    "QUOTE_DOUBLE", "QUOTE_SINGLE", "QUOTE_BACK",
     "SQUARE_OPEN", "SQUARE_CLOSE",
     "SINGLE_SQUARE_OPEN", "SINGLE_SQUARE_CLOSE",
     "CHAR", "SLASH", "DOLLAR", "CARROT"
@@ -110,11 +95,17 @@ Scanner.prototype = {
         else if (c === "'") {
             this.addToken(TokenType.QUOTE_SINGLE);
         }
+        else if (c === "`") {
+            this.addToken(TokenType.QUOTE_BACK);
+        }
         else if (c === "[") {
             this.addToken(TokenType.SQUARE_OPEN, "[");
         }
         else if (c === "]") {
             this.addToken(TokenType.SQUARE_CLOSE, "]");
+        }
+        else if (c === "/") {
+            this.addToken(TokenType.SLASH, "/");
         }
         else {
             this.addToken(TokenType.CHAR, c);
@@ -139,6 +130,9 @@ Scanner.prototype = {
 
 Expr = {
     Command: function(...expressions) {
+        this.expressions = expressions;
+    },
+    Comment: function(...expressions) {
         this.expressions = expressions;
     },
     Concat: function(...expressions) {
@@ -197,22 +191,39 @@ Parser.prototype = {
         if (this.match(TokenType.BACKSLASH)) {
             return new Expr.Literal(this.advance().lexeme)
         }
+        if (this.matchMany(TokenType.SLASH, TokenType.SLASH)) {
+            return this.comment() 
+        }
         expr = this.quote()
         if (expr) return expr
         expr = this.pageRef()
         if (expr) return expr
         return new Expr.Literal(this.advance().lexeme)
     },
+    comment: function() {
+        let tokens = []
+        while (!this.isAtEnd()) {
+            tokens.push(this.advance())
+        }
+        return new Expr.Comment(...tokens)
+    },
     quote: function() {
         let start = this.current
-        if (!(this.match(TokenType.QUOTE_DOUBLE, TokenType.QUOTE_SINGLE))) {
+        if (!(this.match(TokenType.QUOTE_DOUBLE, TokenType.QUOTE_SINGLE, TokenType.QUOTE_BACK))) {
             return false
         }
         let openToken = this.previous()
 
         var inner = []
         while (!(this.checkMany(openToken.type) || this.isAtEnd())) {
-            inner.push(this.primary())
+            let expr;
+            if (this.match(TokenType.BACKSLASH)) {
+                inner.push(new Expr.Literal(this.advance().lexeme))
+            } else if(expr = this.pageRef()) {
+                inner.push(expr)
+            } else {
+                inner.push(new Expr.Literal(this.advance().lexeme))
+            }
         }
 
         if (!this.match(openToken.type)) {
@@ -345,27 +356,29 @@ Interpreter.prototype = {
         return await this.evaluate(expr)
     },
     visitCommand: async function(expr) {
-        var terms = expr.expressions.map(expr => this.evaluate(expr))
+        let terms = expr.expressions
+            .filter(e => !(e instanceof Expr.Comment) )
+            .map(expr => this.evaluate(expr))
         var func = this.getCommand(terms[0])
         var args = terms.slice(1)
         return await func(...args)
     },
-    getCommand: function(cmd) {
-        // try {
-        //     var func = eval(cmd)
-        //     let func = supportedCommands[cmd]
-        //     if (!(func instanceof Function)) throw new ReferenceError()
-        // } catch (e) {
-        //     if (e instanceof ReferenceError) {
-        //         throw new RuntimeError(`command not found: ${cmd}`)
-        //     } 
-        //     throw e
-        // }
-        let func = supportedCommands[cmd]
-        if (!func) {
-            throw new RuntimeError(`command not supported: ${cmd}`)
+    getCommand: function(cmdString) {
+        let cmd;
+        try {
+            cmd = eval(cmdString)
+            if (!(cmd instanceof Function)) throw new ReferenceError()
+        } catch (e) {
+            if (e instanceof ReferenceError) {
+                throw new RuntimeError(`command not found: ${cmdString}`)
+            } 
+            throw e
         }
-        return func
+        //let func = supportedCommands[cmd]
+        //if (!func) {
+        //    throw new RuntimeError(`command not supported: ${cmd}`)
+        //}
+        return cmd
         
     },
     visitConcat: function(expr) {

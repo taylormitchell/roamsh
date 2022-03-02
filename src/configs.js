@@ -22,9 +22,10 @@ configs = {
 
     }
     `,
-    ROAMSH_INTERPRETER: "js",
+    ROAMSH_INTERPRETER: "rrsh",
     ROAMSH_CLEAR: true,
-    ROAMSH_PATHS: ['[[roamsh/commands]]']
+    ROAMSH_PATHS: ['[[roamsh/commands]]'],
+    ROAMSH_CALLBACK: null,
 }
 configs.ROAMSH_PREFIX = `(${configs.ROAMSH_INTERPRETER}) ~ %` 
 
