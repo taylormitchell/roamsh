@@ -130,7 +130,7 @@ Prompt.prototype = {
     },
     addHTML: function() {
         let termElement = this.block.getElement()
-        termElement.querySelector(".rm-block-main").classList.add("prompt")
+        termElement.querySelector(".rm-block-main").classList.add("roamsh-prompt")
         let prefix = this.createPrefixElement(configs.ROAMSH_PREFIX)
         termElement
             .querySelector(".controls")
@@ -139,7 +139,7 @@ Prompt.prototype = {
     },
     removeHTML: function() {
         termElement = this.block.getElement()
-        termElement.querySelector(".rm-block-main").classList.remove("prompt")
+        termElement.querySelector(".rm-block-main").classList.remove("roamsh-prompt")
         let prefix = termElement.querySelector(".prompt-prefix-area")
         if (prefix) prefix.remove()
     },
@@ -218,9 +218,7 @@ Terminal = {
     createPrompt: function(block) {
         let prompt = new Prompt(block, this.callbacks)
         this.prompts[block.uid] = prompt
-        if (!prompt.isActive() && prompt.blockInView()) {
-            this.activatePrompt(prompt)
-        }
+        this.updatePrompt(prompt)
         return prompt
     },
     removePrompt: function(prompt) {
@@ -246,21 +244,24 @@ Terminal = {
     },
     togglePromptOrExecute: function(block) {
         let prompt = this.getPrompt(block)
-        if(prompt && !prompt.Empty) {
+        if(prompt && !prompt.isEmpty()) {
             this.executePrompt(prompt)
         } else {
             this.togglePrompt(block)
+        }
+    },
+    updatePrompt: function(prompt) {
+        if (!prompt.blockExists()) {
+            this.removePrompt(prompt)
+        } else if (!prompt.isActive() && prompt.blockInView()) {
+            this.activatePrompt(prompt)
         }
     },
     // Maintain UI and state
     update: function() {
         // Update prompts
         for(let [uid, prompt] of Object.entries(this.prompts)) {
-            if (!prompt.blockExists()) {
-                this.removePrompt(prompt)
-            } else if (!prompt.isActive() && prompt.blockInView()) {
-                this.activatePrompt(prompt)
-            }
+            this.updatePrompt(prompt)
         }
         // Update observer
         if(this.count() > 0 && !this.observer) {
@@ -307,22 +308,12 @@ Terminal = {
     },
     commandPaletteCallback: function() {
         let block = Block.getFocused()
-        const prompt = this.getPrompt(block)
-        if (prompt.isActive()) {
-            this.removePrompt(prompt)
-        } else {
-            this.activatePrompt(prompt)
-        }
+        this.togglePrompt(block)
     },
     hotkeyCallback: function(e) {
         if (e.ctrlKey && e.metaKey && e.key == "Enter") {
             let block = Block.getFocused()
-            let prompt = this.getPrompt(block)
-            if(prompt && prompt.isActive() && prompt.isEmpty()) {
-                this.removePrompt(prompt)
-            } else {
-                this.createPrompt(block)
-            }
+            this.togglePromptOrExecute(block)
         }
     },
     addCommandToPallete: function() {

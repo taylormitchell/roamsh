@@ -4,13 +4,13 @@ configs = {
     ROAMSH_TERM_ATTR: "roamshTermListener",
     ROAMSH_CSS_ID: "roam-term",
     ROAMSH_CSS: `
-    .roamTerm .rm-block-text
+    .roamsh-prompt .rm-block-text
     {
         background-color: rgb(235, 232, 232);
         border-radius: 0 5px 5px 0;
     }
 
-    .roamTerm .prompt-prefix-area {
+    .roamsh-prompt .prompt-prefix-area {
         background-color: rgb(235, 232, 232);
         display: flex;
         margin-top: -1px;
