@@ -49,7 +49,7 @@ function argToBlock(arg) {
 
 // Commands
 
-async function createBlock(string="", dst="") {
+async function createBlock(string="", dst="/") {
     let dstLoc = argToLocation(dst)
     await Block.create(string.toString(), dstLoc)
 }
