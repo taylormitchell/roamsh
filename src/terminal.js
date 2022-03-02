@@ -3,22 +3,41 @@ let { Block, Page, Roam } = require('./graph');
 const configs = require('./configs');
 
 
-CommandInterpreters = {
-    "js": async (source) => eval(source),
-    "rrsh": async function (source) {
-        let rrsh = new RoamResearchShell()
-        return await rrsh.run(source)
-    } 
+async function defaultPromptCallback(prompt, command, result, func, ...args) {
+    // Clear prompt
+    await prompt.block.update("");
+
+    // Add result below it
+    
+    if (result) {
+        let out;
+        if(typeof(result) === 'object') {
+            let replacer = (key, value) => {
+                if(typeof(value) === 'function') {
+                    return value.toString().split("\n").slice(0,1) + "}"
+                }
+                return value
+            }
+            out = JSON.stringify(result, replacer, "\t")
+            out = '`'.repeat(3) + 'javascript\n' + out + '`'.repeat(3)
+        } else if(typeof(result) === 'function') {
+            out = '`'.repeat(3) + 'javascript\n' + out.toString() + '`'.repeat(3)
+        } else {
+            out = result.toString()
+        }
+        await prompt.block.addChild(out.toString())
+    }
 }
 
-function Prompt(block) {
+function Prompt(block, callbacks=[]) {
     this.block = block
     this.uid = this.block.uid
     this.current = ""
     this.commandHistory = []
     this.commandHistoryId = 0
     this.observer = null;
-    this.interpret = CommandInterpreters[configs.ROAMSH_INTERPRETER]
+    this.interpreter = new RoamResearchShell()
+    this.callbacks = callbacks;
 }
 Prompt.getFocused = function() {
     let block = Block.getFocused()
@@ -40,38 +59,21 @@ Prompt.prototype = {
         this.removeHotkeyListener()
         this.disconnectObserver()
     },
-    execute: async function (callback = configs.ROAMSH_CALLBACK) {
-        if(!callback) {
-            callback = this.defaultExecuteCallback
-        }
+    execute: async function () {
         // Get command from block and save
-        let command = this.getCommand()
-        this.commandHistory.push(command)
+        let commandString = this.getCommand()
+        this.commandHistory.push(commandString)
         this.commandHistoryId = 0
+        let [func, ...args]  = this.interpreter.transpile(commandString)
         // Execute command
         let res;
         try {
-            res = await this.interpret(command)
-            await callback(this, command, res)
+            res = await func(...args)
+            for(let callback of this.callbacks) {
+                await callback(this, commandString, res, func, args)
+            }
         } catch (error) {
             this.reportError(error)
-        }
-    },
-    defaultExecuteCallback: async function(prompt, command, result, func, ...args) {
-        // Clear prompt
-        if(configs.ROAMSH_CLEAR) {
-            await prompt.block.update("");
-        }
-        // Add result below it
-        if (result && typeof(result) !== "function") {
-            let out;
-            if(typeof(result) === 'object') {
-                out = JSON.stringify(result, null, "\t")
-                out = '`'.repeat(3) + 'javascript\n' + out + '`'.repeat(3)
-            } else {
-                out = result
-            }
-            await prompt.block.addChild(out.toString())
         }
     },
     reportError(error) {
@@ -211,11 +213,12 @@ Prompt.prototype = {
 Terminal = {
     prompts: {},
     observer: null,
+    callbacks: [defaultPromptCallback],
     // Prompt stuff
     getPrompt: function(block) {
         let roamTerm = this.prompts[block.uid]
         if (!roamTerm) {
-            roamTerm = new Prompt(block)
+            roamTerm = new Prompt(block, this.callbacks)
             this.prompts[block.uid] = roamTerm
         }
         return roamTerm
