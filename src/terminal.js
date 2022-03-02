@@ -1,4 +1,4 @@
-let { RoamResearchShell } = require('./shell');
+let { RoamResearchShell } = require('./rrsh');
 let { Block, Page, Roam } = require('./graph');
 const configs = require('./configs');
 
