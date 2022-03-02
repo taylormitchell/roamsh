@@ -86,7 +86,6 @@ Block.prototype = {
             }
          );
     },
-    
     delete: async function () {
         await window.roamAlphaAPI.deleteBlock(
             {
@@ -102,7 +101,7 @@ Block.prototype = {
                     "block": { "uid": child.uid }
                 }
             );
-            return new Block(block.uid)
+            return new Block(child.uid)
         } else {
             return Block.create(child.toString(), new Location(this.uid, idx))
         }
@@ -110,6 +109,30 @@ Block.prototype = {
     appendChild: async function (blockOrString) {
         let idx = (await this.getChildren() || []).length
         return this.addChild(blockOrString, idx)
+    },
+    addSibling: async function(sibling = '', idx=0) {
+        if (sibling instanceof Block) {
+            await window.roamAlphaAPI.moveBlock(
+                {
+                    "location": { "parent-uid": this.getParent().uid, "order": this.getOrder() + idx },
+                    "block": { "uid": sibling.uid }
+                }
+            );
+            return new Block(sibling.uid)
+        }
+        return Block.create(sibling.toString(), new Location(this.getParent().uid, this.getOrder() + idx))
+    },
+    addSiblingAbove: async function(sibling='', idx=0) {
+        if(idx < 0) {
+            throw `Indexer must be positive: ${idx}`
+        }
+        return await this.addSibling(sibling, -idx)
+    },
+    addSiblingBelow: async function(sibling='', idx=0) {
+        if(idx < 0) {
+            throw `Indexer must be positive: ${idx}`
+        }
+        return await this.addSibling(sibling, idx+1)
     },
     copy: async function(location, opts = {recursive: true, reference: false}) {
         let string = opts.reference ? this.toRef() : this.getString() 
