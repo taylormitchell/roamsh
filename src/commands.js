@@ -38,12 +38,12 @@ function argToBlock(arg) {
         node = graph.getByPath(arg)
         if(node instanceof Block) {
             return node
+        } else if(node instanceof Location) {
+            throw new Error(`Argument must be a Block or a path to a block. The given path "${arg}" doesn't lead to an existing block`)
         }
-        throw `Argument must be a Block or a Path to a block. `
-              `The given path "${arg}" lead to a node of type ${typeof(arg)}.`
+        throw new Error(`Argument must be a Block or a path to a block. The given path "${arg}" lead to a node of type ${typeof(node)}.`)
     } else {
-        throw `Argument must be a Block or a Path to a block. `
-              `The given arg "${arg}" has type ${typeof(arg)}.`
+        throw new Error(`Argument must be a Block or a path to a block. The given arg "${arg}" has type ${typeof(arg)}.`)
     }
 }
 
@@ -112,11 +112,15 @@ async function linkChildren(src='^', dst="/", opts = {recursive: true}) {
 
 async function run(src="^") {
     let codeBlock = argToBlock(src)
-    source = codeBlock.getString().trim() 
+    code = codeBlock.getString().trim() 
       .replace(new RegExp("^" + "`".repeat(3) + ".+"), "")
       .replace(new RegExp("`".repeat(3) + "$"), "")
       .trim();
-    return await (async () => eval(source))();
+    return await (async () => eval(code))();
+}
+
+async function js(code = "") {
+    return await (async () => eval(code))();
 }
 
 // Run all code blocks under user paths
@@ -147,4 +151,4 @@ function loadUserCommands(recursive=true) {
 loadUserCommands()
 
 
-module.exports = { createBlock, deleteBlock, moveBlock, copyBlock, refBlock, toggleBlock, zoom, echo, cat, listChildren, linkChildren, run, loadUserCommands, argToLocation, argToBlock }
+module.exports = { createBlock, deleteBlock, moveBlock, copyBlock, refBlock, toggleBlock, zoom, echo, cat, listChildren, linkChildren, run, loadUserCommands, argToLocation, argToBlock, js }

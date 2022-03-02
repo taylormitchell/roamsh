@@ -40,29 +40,38 @@ Prompt.prototype = {
         this.removeHotkeyListener()
         this.disconnectObserver()
     },
-    execute: async function () {
+    execute: async function (callback = configs.ROAMSH_CALLBACK) {
+        if(!callback) {
+            callback = this.defaultExecuteCallback
+        }
+        // Get command from block and save
         let command = this.getCommand()
         this.commandHistory.push(command)
         this.commandHistoryId = 0
-        if(configs.ROAMSH_CLEAR) {
-            await this.block.update("");
-        }
+        // Execute command
         let res;
         try {
             res = await this.interpret(command)
-            if (res && typeof(res) !== "function") {
-                let out;
-                if(typeof(res) === 'object') {
-                    out = JSON.stringify(res, null, "\t")
-                    out = '`'.repeat(3) + 'javascript\n' + out + '`'.repeat(3)
-                } else {
-                    out = res
-                }
-                await this.block.addChild(out.toString())
-            }
+            await callback(this, command, res)
         } catch (error) {
             this.reportError(error)
-            
+        }
+    },
+    defaultExecuteCallback: async function(prompt, command, result, func, ...args) {
+        // Clear prompt
+        if(configs.ROAMSH_CLEAR) {
+            await prompt.block.update("");
+        }
+        // Add result below it
+        if (result && typeof(result) !== "function") {
+            let out;
+            if(typeof(result) === 'object') {
+                out = JSON.stringify(result, null, "\t")
+                out = '`'.repeat(3) + 'javascript\n' + out + '`'.repeat(3)
+            } else {
+                out = result
+            }
+            await prompt.block.addChild(out.toString())
         }
     },
     reportError(error) {
@@ -229,12 +238,13 @@ Terminal = {
         roamTerm.execute()
     },
     togglePrompt: function(block) {
-        const roamTerm = this.getPrompt(block)
-        if (roamTerm.isActive()) {
-            this.deactivatePrompt(roamTerm)
+        const prompt = this.getPrompt(block)
+        if (prompt.isActive()) {
+            this.deactivatePrompt(prompt)
         } else {
-            this.activatePrompt(roamTerm)
+            this.activatePrompt(prompt)
         }
+        return prompt
     },
     togglePromptOrExecute: function(block) {
         const roamTerm = this.getPrompt(block)
@@ -340,4 +350,4 @@ Terminal = {
     },
 }
 
-module.exports = { Terminal }
+module.exports = { Terminal, Prompt }
