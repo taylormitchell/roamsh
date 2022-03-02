@@ -1,20 +1,3 @@
-//let commands = require('./commands') 
-//
-//
-//const supportedCommands = {
-//    mv: commands.moveBlock,
-//    cp: commands.copyBlock,
-//    ln: commands.refBlock,
-//    rm: commands.deleteBlock,
-//    mk: commands.createBlock,
-//    ex: commands.toggleExpandBlock,
-//    zm: commands.zoom ,
-//    ls: commands.listChildren,
-//    lk: commands.linkChildren,
-//    echo: commands.echo,
-//    cat: commands.cat,
-//    run: commands.run,
-//}
 
 function RoamResearchShell() {
     this.hadError = false;
@@ -46,7 +29,7 @@ const tokenTypeList = [
     "QUOTE_DOUBLE", "QUOTE_SINGLE", "QUOTE_BACK",
     "SQUARE_OPEN", "SQUARE_CLOSE",
     "SINGLE_SQUARE_OPEN", "SINGLE_SQUARE_CLOSE",
-    "CHAR", "POUND", "DOLLAR", "CARROT"
+    "CHAR", "DOLLAR", "CARROT"
 ];
 TokenType = {}
 tokenTypeList.forEach(type => TokenType[type] = type)
@@ -104,9 +87,6 @@ Scanner.prototype = {
         else if (c === "]") {
             this.addToken(TokenType.SQUARE_CLOSE, "]");
         }
-        else if (c === "#") {
-            this.addToken(TokenType.POUND, "#");
-        }
         else {
             this.addToken(TokenType.CHAR, c);
             // RoamScript.error(index, message)
@@ -130,9 +110,6 @@ Scanner.prototype = {
 
 Expr = {
     Command: function(...expressions) {
-        this.expressions = expressions;
-    },
-    Comment: function(...expressions) {
         this.expressions = expressions;
     },
     Concat: function(...expressions) {
@@ -191,21 +168,11 @@ Parser.prototype = {
         if (this.match(TokenType.BACKSLASH)) {
             return new Expr.Literal(this.advance().lexeme)
         }
-        if (this.matchMany(TokenType.POUND)) {
-            return this.comment() 
-        }
         expr = this.quote()
         if (expr) return expr
         expr = this.pageRef()
         if (expr) return expr
         return new Expr.Literal(this.advance().lexeme)
-    },
-    comment: function() {
-        let tokens = []
-        while (!this.isAtEnd()) {
-            tokens.push(this.advance())
-        }
-        return new Expr.Comment(...tokens)
     },
     quote: function() {
         let start = this.current
@@ -356,9 +323,7 @@ Interpreter.prototype = {
         return await this.evaluate(expr)
     },
     visitCommand: async function(expr) {
-        let terms = expr.expressions
-            .filter(e => !(e instanceof Expr.Comment) )
-            .map(expr => this.evaluate(expr))
+        let terms = expr.expressions.map(expr => this.evaluate(expr))
         var func = this.getCommand(terms[0])
         var args = terms.slice(1)
         return await func(...args)
