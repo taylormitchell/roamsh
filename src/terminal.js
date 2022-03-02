@@ -130,7 +130,7 @@ Prompt.prototype = {
     },
     addHTML: function() {
         let termElement = this.block.getElement()
-        termElement.querySelector(".rm-block-main").classList.add("roamTerm")
+        termElement.querySelector(".rm-block-main").classList.add("prompt")
         let prefix = this.createPrefixElement(configs.ROAMSH_PREFIX)
         termElement
             .querySelector(".controls")
@@ -139,7 +139,7 @@ Prompt.prototype = {
     },
     removeHTML: function() {
         termElement = this.block.getElement()
-        termElement.querySelector(".rm-block-main").classList.remove("roamTerm")
+        termElement.querySelector(".rm-block-main").classList.remove("prompt")
         let prefix = termElement.querySelector(".prompt-prefix-area")
         if (prefix) prefix.remove()
     },
@@ -168,7 +168,7 @@ Prompt.prototype = {
         if (!this.blockExists()) return false
         if (!this.blockInView()) return false
         termElement = this.block.getElement()
-        return termElement.querySelector(".rm-block-main").classList.contains("roamTerm")
+        return termElement.querySelector(".rm-block-main").classList.contains("prompt")
     },
     isEmpty: function() {
         return this.getString() === ""
@@ -215,60 +215,58 @@ Terminal = {
     observer: null,
     callbacks: [defaultPromptCallback],
     // Prompt stuff
-    getPrompt: function(block) {
-        let roamTerm = this.prompts[block.uid]
-        if (!roamTerm) {
-            roamTerm = new Prompt(block, this.callbacks)
-            this.prompts[block.uid] = roamTerm
-        }
-        return roamTerm
-    },
-    activatePrompt: function(roamTerm) {
-        roamTerm.activate()
-        this.prompts[roamTerm.block.uid] = roamTerm
-        if (this.count() === 1) {
-            this.connectObserver()
-        }
-    },
-    deactivatePrompt: function(roamTerm) {
-        roamTerm.deactivate()
-        delete this.prompts[roamTerm.block.uid]
-        if (this.count() === 0) {
-            this.disconnectObserver()
-        }
-    },
-    executePrompt: function(roamTerm) {
-        roamTerm.execute()
-    },
-    togglePrompt: function(block) {
-        const prompt = this.getPrompt(block)
-        if (prompt.isActive()) {
-            this.deactivatePrompt(prompt)
-        } else {
+    createPrompt: function(block) {
+        let prompt = new Prompt(block, this.callbacks)
+        this.prompts[block.uid] = prompt
+        if (!prompt.isActive() && prompt.blockInView()) {
             this.activatePrompt(prompt)
         }
         return prompt
     },
-    togglePromptOrExecute: function(block) {
-        const roamTerm = this.getPrompt(block)
-        if (roamTerm.isActive()) {
-            if (!roamTerm.isEmpty()) {
-                this.executePrompt(roamTerm)
-            } else {
-                this.deactivatePrompt(roamTerm)
-            }
+    removePrompt: function(prompt) {
+        prompt.deactivate()
+        delete this.prompts[prompt.block.uid]
+    },
+    getPrompt: function(block) {
+        return this.prompts[block.uid]
+    },
+    activatePrompt: function(prompt) {
+        prompt.activate()
+    },
+    executePrompt: function(prompt) {
+        prompt.execute()
+    },
+    togglePrompt: function(block) {
+        let prompt = this.getPrompt(block)
+        if(prompt) {
+            this.removePrompt(prompt)
         } else {
-            this.activatePrompt(roamTerm)
+            this.createPrompt(block)
+        }
+    },
+    togglePromptOrExecute: function(block) {
+        let prompt = this.getPrompt(block)
+        if(prompt && !prompt.Empty) {
+            this.executePrompt(prompt)
+        } else {
+            this.togglePrompt(block)
         }
     },
     // Maintain UI and state
     update: function() {
+        // Update prompts
         for(let [uid, prompt] of Object.entries(this.prompts)) {
             if (!prompt.blockExists()) {
-                this.deactivatePrompt(prompt)
+                this.removePrompt(prompt)
             } else if (!prompt.isActive() && prompt.blockInView()) {
                 this.activatePrompt(prompt)
             }
+        }
+        // Update observer
+        if(this.count() > 0 && !this.observer) {
+            this.connectObserver()
+        }else if(this.count() === 0) {
+            this.disconnectObserver()
         }
     },
     connectObserver: function() {
@@ -291,7 +289,7 @@ Terminal = {
     },
     tearDown: function() {
         for (let [uid, prompt] of Object.entries(this.prompts)) {
-            this.deactivatePrompt(prompt)
+            this.removePrompt(prompt)
         }
         this.removeCommandFromPallete()
         this.removeHotkeyListener()
@@ -309,21 +307,21 @@ Terminal = {
     },
     commandPaletteCallback: function() {
         let block = Block.getFocused()
-        const roamTerm = this.getPrompt(block)
-        if (roamTerm.isActive()) {
-            this.deactivatePrompt(roamTerm)
+        const prompt = this.getPrompt(block)
+        if (prompt.isActive()) {
+            this.removePrompt(prompt)
         } else {
-            this.activatePrompt(roamTerm)
+            this.activatePrompt(prompt)
         }
     },
     hotkeyCallback: function(e) {
         if (e.ctrlKey && e.metaKey && e.key == "Enter") {
             let block = Block.getFocused()
-            const roamTerm = this.getPrompt(block)
-            if (roamTerm.isActive() && roamTerm.isEmpty()) {
-                this.deactivatePrompt(roamTerm)
+            let prompt = this.getPrompt(block)
+            if(prompt && prompt.isActive() && prompt.isEmpty()) {
+                this.removePrompt(prompt)
             } else {
-                this.activatePrompt(roamTerm)
+                this.createPrompt(block)
             }
         }
     },

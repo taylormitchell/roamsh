@@ -24,8 +24,7 @@ configs = {
     `,
     ROAMSH_INTERPRETER: "rrsh",
     ROAMSH_CLEAR: true,
-    ROAMSH_PATHS: ['[[roamsh/commands]]'],
-    ROAMSH_CALLBACK: null,
+    ROAMSH_PATHS: ['[[roamsh/commands]]']
 }
 configs.ROAMSH_PREFIX = `(${configs.ROAMSH_INTERPRETER}) ~ %` 
 
