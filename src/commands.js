@@ -59,20 +59,20 @@ async function deleteBlock(src="^") {
     await block.delete()
 }
 
-async function moveBlock(src="^", dst="") {
+async function moveBlock(src="^", dst="/") {
     let srcBlock = argToBlock(src)
     let dstLoc = argToLocation(dst)
     await srcBlock.move(dstLoc)
 }
 
-async function copyBlock(src="^", dst="", opts = {recursive: true}) {
+async function copyBlock(src="^", dst="/", opts = {recursive: true}) {
     let srcBlock = argToBlock(src)
     let dstLoc = argToLocation(dst)
     // await Block.create(srcBlock.getString(), dstLoc)
     await srcBlock.copy(dstLoc, opts)
 }
 
-async function refBlock(src="^", dst="") {
+async function refBlock(src="^", dst="/") {
     let srcBlock = argToBlock(src)
     let dstLoc = argToLocation(dst)
     await Block.create(srcBlock.toRef(), dstLoc)
