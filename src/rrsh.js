@@ -46,7 +46,7 @@ const tokenTypeList = [
     "QUOTE_DOUBLE", "QUOTE_SINGLE", "QUOTE_BACK",
     "SQUARE_OPEN", "SQUARE_CLOSE",
     "SINGLE_SQUARE_OPEN", "SINGLE_SQUARE_CLOSE",
-    "CHAR", "SLASH", "DOLLAR", "CARROT"
+    "CHAR", "POUND", "DOLLAR", "CARROT"
 ];
 TokenType = {}
 tokenTypeList.forEach(type => TokenType[type] = type)
@@ -104,8 +104,8 @@ Scanner.prototype = {
         else if (c === "]") {
             this.addToken(TokenType.SQUARE_CLOSE, "]");
         }
-        else if (c === "/") {
-            this.addToken(TokenType.SLASH, "/");
+        else if (c === "#") {
+            this.addToken(TokenType.POUND, "#");
         }
         else {
             this.addToken(TokenType.CHAR, c);
@@ -191,7 +191,7 @@ Parser.prototype = {
         if (this.match(TokenType.BACKSLASH)) {
             return new Expr.Literal(this.advance().lexeme)
         }
-        if (this.matchMany(TokenType.SLASH, TokenType.SLASH)) {
+        if (this.matchMany(TokenType.POUND)) {
             return this.comment() 
         }
         expr = this.quote()
