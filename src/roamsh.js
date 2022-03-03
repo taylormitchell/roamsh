@@ -1,10 +1,10 @@
 let path = require("./path") 
 let graph = require("./graph") 
-let core = require("./core") 
 let commands = require("./commands") 
 let terminal = require("./terminal") 
 let date = require("./date") 
 let configs = require("./configs") 
+let util = require("./util") 
 
 // Set up terminal
 terminal.Terminal.setUp()
@@ -28,4 +28,4 @@ ud = commands.updateBlock
 // Load user commands defined in configs.ROAMSH_PATHS
 commands.loadUserCommands()
 
-module.exports = { path, graph, commands, terminal, date, core, configs, ...core}
+module.exports = { path, graph, commands, terminal, date, configs, util, ...graph }
