@@ -49,9 +49,10 @@ function argToBlock(arg) {
 
 // Commands
 
-async function createBlock(string="", dst="/") {
+async function createBlock(string="", dst="") {
     let dstLoc = argToLocation(dst)
-    await Block.create(string.toString(), dstLoc)
+    let newBlock = await Block.create(string.toString(), dstLoc)
+    return newBlock.toRef()
 }
 
 async function deleteBlock(src="^") {
@@ -59,17 +60,18 @@ async function deleteBlock(src="^") {
     await block.delete()
 }
 
-async function moveBlock(src="^", dst="/") {
+async function moveBlock(src="^", dst="") {
     let srcBlock = argToBlock(src)
     let dstLoc = argToLocation(dst)
-    await srcBlock.move(dstLoc)
+    srcBlock.move(dstLoc)
+    return srcBlock.toRef()
 }
 
-async function copyBlock(src="^", dst="/", opts = {recursive: true}) {
+async function copyBlock(src="^", dst="", opts = {recursive: true}) {
     let srcBlock = argToBlock(src)
     let dstLoc = argToLocation(dst)
-    // await Block.create(srcBlock.getString(), dstLoc)
-    await srcBlock.copy(dstLoc, opts)
+    let newBlock = await srcBlock.copy(dstLoc, opts)
+    return newBlock.toRef()
 }
 
 async function updateBlock(string, dst="^") {
@@ -77,14 +79,15 @@ async function updateBlock(string, dst="^") {
         throw new Error("Missing string argument")
     }
     let dstBlock = argToBlock(dst)
-    // await Block.create(srcBlock.getString(), dstLoc)
-    await dstBlock.update(string)
+    let newBlock = await dstBlock.update(string)
+    return newBlock.toRef()
 }
 
-async function refBlock(src="^", dst="/") {
+async function refBlock(src="^", dst="") {
     let srcBlock = argToBlock(src)
     let dstLoc = argToLocation(dst)
-    await Block.create(srcBlock.toRef(), dstLoc)
+    let newBlock = await Block.create(srcBlock.toRef(), dstLoc)
+    return newBlock.toRef()
 }
 
 async function toggleBlock(src='^') {
@@ -97,34 +100,45 @@ async function zoom(src='^') {
     await blockOrPage.open()
 }
 
-async function echo(arg, dst="/") {
-    let dstLoc = argToLocation(dst)
-    await Block.create(arg.toString(), dstLoc)
+async function echo(string) {
+    return string
 }
 
-async function cat(src='^', dst="/") {
+async function cat(src='^', dst="") {
     let block = argToBlock(src)
     let dstLoc = argToLocation(dst)
-    await Block.create(block.getString(), dstLoc)
+    let newBlock = await Block.create(block.getString(), dstLoc)
+    return newBlock.toRef()
 }
 
-async function listChildren(src='^', dst='/', opts = {recursive: true}) {
+async function listChildren(src='^', dst='', opts = {recursive: true}) {
     let srcBlock = argToBlock(src)
     let dstLoc = argToLocation(dst)
-    await srcBlock.copyChildren(dstLoc, opts)
+    let newChildren = await srcBlock.copyChildren(dstLoc, opts)
+    if(newChildren.length) {
+        return `${newChildren[0].toRef()}:${newChildren.slice(-1)[0].toRef()}`
+    }
 }
 
-async function linkChildren(src='^', dst="/", opts = {recursive: true}) {
+async function linkChildren(src='^', dst="", opts = {recursive: true}) {
     opts.reference = true;
-    listChildren(src, dst, opts)
+    return await listChildren(src, dst, opts)
 }
 
 async function run(src="^") {
-    let codeBlock = argToBlock(src)
-    code = codeBlock.getString().trim() 
-      .replace(new RegExp("^" + "`".repeat(3) + ".+"), "")
-      .replace(new RegExp("`".repeat(3) + "$"), "")
-      .trim();
+    let block = argToBlock(src)
+    let string = block.getString().trim() 
+    if(!(string.startsWith('`'.repeat(3)) && string.endsWith('`'.repeat(3)))) {
+        throw new Error(`Block(uid=${block.uid}) at "${src}" isn't a code block`)
+    }
+    string = string
+        .replace(/^```/, "")
+        .replace(/```$/, "")
+        .trim()
+    if(!string.startsWith('javascript')) {
+        throw new Error('Only javascript code blocks are supported')
+    }
+    let code = string.replace(/^javascript/, '').trim()
     return await (async () => eval(code))();
 }
 

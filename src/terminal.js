@@ -2,32 +2,6 @@ let { RoamResearchShell } = require('./rrsh');
 let { Block, Page, Roam } = require('./graph');
 const configs = require('./configs');
 
-
-async function defaultPromptCallback(prompt, command, result, func, args) {
-    // Clear prompt
-    await prompt.block.update("");
-
-    // Add result below it
-    if (result) {
-        let out;
-        if(typeof(result) === 'object') {
-            let replacer = (key, value) => {
-                if(typeof(value) === 'function') {
-                    return value.toString().split("\n").slice(0,1) + "}"
-                }
-                return value
-            }
-            out = JSON.stringify(result, replacer, "\t")
-            out = '`'.repeat(3) + 'javascript\n' + out + '`'.repeat(3)
-        } else if(typeof(result) === 'function') {
-            out = '`'.repeat(3) + 'javascript\n' + out.toString() + '`'.repeat(3)
-        } else {
-            out = result.toString()
-        }
-        await prompt.block.addChild(out.toString())
-    }
-}
-
 function Prompt(block, callbacks=[]) {
     this.block = block
     this.uid = this.block.uid
@@ -229,7 +203,6 @@ Prompt.prototype = {
     }
 }
 
-
 Terminal = {
     prompts: {},
     observer: null,
@@ -357,4 +330,29 @@ Terminal = {
     },
 }
 
-module.exports = { Terminal, Prompt }
+function formatResult(result) {
+    formatFunction = (f) => f.toString().split("\n").slice(0,1) + "}"
+    if(!result) return
+    // Put objects and functions inside code blocks
+    if(typeof(result) === 'object') {
+        let replacer = (k, v) => typeof(v) === 'function' ? formatFunction(v) : v
+        let json = JSON.stringify(result, replacer, "\t")
+        return '`'.repeat(3) + 'javascript\n' + json + '`'.repeat(3)
+    }
+    if(typeof(result) === 'function') {
+        return '`'.repeat(3) + 'javascript\n' + formatFunction(f) + '`'.repeat(3)
+    }
+    // and everything else as a string 
+    return result.toString()
+}
+
+async function defaultPromptCallback(prompt, command, result, func, args) {
+    // Clear prompt
+    await prompt.block.update("");
+    // Add result below prompt
+    if(!result) return
+    result = formatResult(result)
+    await prompt.block.addChild(result)
+}
+
+module.exports = { Terminal, Prompt, formatResult }
