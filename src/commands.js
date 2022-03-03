@@ -72,6 +72,15 @@ async function copyBlock(src="^", dst="/", opts = {recursive: true}) {
     await srcBlock.copy(dstLoc, opts)
 }
 
+async function updateBlock(string, dst="^") {
+    if(!string) {
+        throw new Error("Missing string argument")
+    }
+    let dstBlock = argToBlock(dst)
+    // await Block.create(srcBlock.getString(), dstLoc)
+    await dstBlock.update(string)
+}
+
 async function refBlock(src="^", dst="/") {
     let srcBlock = argToBlock(src)
     let dstLoc = argToLocation(dst)
@@ -151,4 +160,4 @@ function loadUserCommands(recursive=true) {
 loadUserCommands()
 
 
-module.exports = { createBlock, deleteBlock, moveBlock, copyBlock, refBlock, toggleBlock, zoom, echo, cat, listChildren, linkChildren, run, loadUserCommands, argToLocation, argToBlock, js }
+module.exports = { createBlock, deleteBlock, moveBlock, copyBlock, refBlock, toggleBlock, zoom, echo, cat, listChildren, linkChildren, run, loadUserCommands, argToLocation, argToBlock, js, updateBlock }
