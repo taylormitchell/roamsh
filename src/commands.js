@@ -167,11 +167,10 @@ function loadUserCommands(recursive=true) {
 
     for(let path of configs.ROAMSH_PATHS) {
         let node = graph.getByPath(path)
-        if(!node) continue
+        if(!(node instanceof Block)) continue
         runCommandsBelow(node, recursive)
     }
 }
-loadUserCommands()
 
 
 module.exports = { createBlock, deleteBlock, moveBlock, copyBlock, refBlock, toggleBlock, zoom, echo, cat, listChildren, linkChildren, run, loadUserCommands, argToLocation, argToBlock, js, updateBlock }
