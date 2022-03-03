@@ -11,14 +11,17 @@ RoamResearchShell.report = function(index, message) {
 }
 RoamResearchShell.prototype = {
     ...RoamResearchShell.prototype,
+    transpile: function(source) {
+        let scanner = new Scanner(source);
+        let tokens = scanner.scanTokens();
+        let parser = new Parser(tokens)
+        let expression = parser.parse()
+        let transpiler = new Transpiler()
+        return transpiler.transpile(expression)
+    },
     run: async function(source) {
-        var scanner = new Scanner(source);
-        var tokens = scanner.scanTokens();
-        // if (hadError) throw new Error("");
-        var parser = new Parser(tokens)
-        var expression = parser.parse()
-        var interpreter = new Interpreter()
-        return await interpreter.interpret(expression)
+        let [func, ...args] = this.transpile(source)
+        return await func(...args) 
     }
 }
 
@@ -316,17 +319,17 @@ RuntimeError.prototype = Object.create(Error.prototype)
 RuntimeError.prototype.constructor = RuntimeError
 
 
-function Interpreter() {}
-Interpreter.prototype = {
-    ...Interpreter.prototype,
-    interpret: async function(expr) {
-        return await this.evaluate(expr)
+function Transpiler() {}
+Transpiler.prototype = {
+    ...Transpiler.prototype,
+    transpile: function(expr) {
+        return this.evaluate(expr)
     },
-    visitCommand: async function(expr) {
+    visitCommand: function(expr) {
         let terms = expr.expressions.map(expr => this.evaluate(expr))
         var func = this.getCommand(terms[0])
         var args = terms.slice(1)
-        return await func(...args)
+        return [func, ...args]
     },
     getCommand: function(cmdString) {
         let cmd;
@@ -339,10 +342,6 @@ Interpreter.prototype = {
             } 
             throw e
         }
-        //let func = supportedCommands[cmd]
-        //if (!func) {
-        //    throw new RuntimeError(`command not supported: ${cmd}`)
-        //}
         return cmd
         
     },

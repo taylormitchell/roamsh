@@ -2,88 +2,46 @@ let { RoamResearchShell } = require('./rrsh');
 let { Block, Page, Roam } = require('./graph');
 const configs = require('./configs');
 
-
-CommandInterpreters = {
-    "js": async (source) => eval(source),
-    "rrsh": async function (source) {
-        let rrsh = new RoamResearchShell()
-        return await rrsh.run(source)
-    } 
-}
-
-function Prompt(block) {
+function Prompt(block, callbacks=[]) {
     this.block = block
     this.uid = this.block.uid
     this.current = ""
     this.commandHistory = []
     this.commandHistoryId = 0
     this.observer = null;
-    this.interpret = CommandInterpreters[configs.ROAMSH_INTERPRETER]
+    this.interpreter = new RoamResearchShell()
+    this.callbacks = callbacks;
 }
 Prompt.getFocused = function() {
     let block = Block.getFocused()
     if (!block) return null
     return new Prompt(block)
 }
+Prompt.create = function(block, callbacks) {
+    let prompt = new Prompt(block, callbacks)
+    prompt.addUItoBlock()
+    return prompt
+},
 Prompt.prototype = {
     ...Prompt.prototype,
-    // Verbs
-    activate: function() {
-        if (this.isActive()) return
-        this.addHTML()
-        this.addHotkeyListener()
-        this.connectObserver()
-    },
-    deactivate: function() {
-        if (!this.isActive()) return
-        this.removeHTML()
-        this.removeHotkeyListener()
-        this.disconnectObserver()
-    },
-    execute: async function (callback = configs.ROAMSH_CALLBACK) {
-        if(!callback) {
-            callback = this.defaultExecuteCallback
-        }
+    // Main prompt actions & properties
+    execute: async function () {
         // Get command from block and save
-        let command = this.getCommand()
-        this.commandHistory.push(command)
+        let commandString = this.getString()
+        this.commandHistory.push(commandString)
         this.commandHistoryId = 0
-        // Execute command
-        let res;
+        // Transpile and execute
         try {
-            res = await this.interpret(command)
-            await callback(this, command, res)
+            let [func, ...args]  = this.interpreter.transpile(commandString)
+            let res = await func(...args)
+            for(let callback of this.callbacks) {
+               await callback(this, commandString, res, func, args)
+            }
         } catch (error) {
             this.reportError(error)
         }
     },
-    defaultExecuteCallback: async function(prompt, command, result, func, ...args) {
-        // Clear prompt
-        if(configs.ROAMSH_CLEAR) {
-            await prompt.block.update("");
-        }
-        // Add result below it
-        if (result && typeof(result) !== "function") {
-            let out;
-            if(typeof(result) === 'object') {
-                out = JSON.stringify(result, null, "\t")
-                out = '`'.repeat(3) + 'javascript\n' + out + '`'.repeat(3)
-            } else {
-                out = result
-            }
-            await prompt.block.addChild(out.toString())
-        }
-    },
-    reportError(error) {
-        errorCodeBlock = "`".repeat(3) + "plain text\n" + error.toString() + "`".repeat(3)
-        this.block.addChild(errorCodeBlock)
-        throw error
-    },
-    getCommand: function() {
-        let textarea = this.block.getTextAreaElement()
-        return textarea.value
-    },
-    updateToPrevious: function() {
+    goToPrev: function() {
         if (this.commandHistoryId <= -this.commandHistory.length) {
             this.commandHistoryId = -this.commandHistory.length
             return
@@ -92,7 +50,7 @@ Prompt.prototype = {
         let previous = this.commandHistory.slice(this.commandHistoryId)[0]
         this.block.update(previous)
     },
-    updateToNext: function() {
+    goToNext: function() {
         let next;
         if (this.commandHistoryId < -1) {
             this.commandHistoryId = this.commandHistoryId + 1
@@ -106,38 +64,70 @@ Prompt.prototype = {
         }
         this.block.update(next)
     },
-    hotkeyCallback: function(e) {
-        if (e.ctrlKey && e.metaKey && e.key==="Enter") {
-            if (!this.isEmpty()) this.execute()
-        }
-        if (e.ctrlKey && e.metaKey && e.key==="ArrowUp") {
-            this.updateToPrevious()
-        }
-        if (e.ctrlKey && e.metaKey && e.key==="ArrowDown") {
-            this.updateToNext()
+    getString: function () {
+        if (this.blockIsFocused()) {
+            return this.block.getTextAreaElement().value
+        } else if(this.blockInView()) {
+            return this.block.getElement().innerText
+        } else {
+            return this.block.getString()
         }
     },
-    addHotkeyListener: function() {
-        let el = this.block.getElement()
-        this.hotkeyCallback = this.hotkeyCallback.bind(this)
-        el.addEventListener("keydown", this.hotkeyCallback)
+    isEmpty: function() {
+        return this.getString() === ""
     },
-    removeHotkeyListener: function() {
-        let el = this.block.getElement()
-        el.removeEventListener("keydown", this.hotkeyCallback)
+    addUItoBlock: function() {
+        if(!this.blockInView()) {
+            return
+        } 
+        if(!this.blockHasPromptUI()) {
+            this.addHTMLToBlock()
+            this.addListenersToBlock()
+            this.connectObserverToBlock()
+            this.updateUIonBlock()
+        }
     },
-    addHTML: function() {
+    removeUIFromBlock: function() {
+        if(!this.blockIsActive()) return
+        this.removeHTMLFromBlock()
+        this.removeListenersFromBlock()
+        this.disconnectObserverFromBlock()
+    },
+    updateUIonBlock: function() {
+        this.current = this.getString()
+        let prefix = this.getPrefixElement()
+        let input = this.getInputElement() 
+        prefix.style.height = input.clientHeight + "px" 
+    },
+    // Block properties
+    blockExists: function() {
+        return this.block.exists()
+    },
+    blockInView: function() {
+        return this.block.getElement() !== null
+    },
+    blockIsFocused: function() {
+        return this.block.isFocused()
+    },
+    blockHasPromptUI: function() {
+        termElement = this.block.getElement()
+        return termElement.querySelector(".rm-block-main").classList.contains("roamsh-prompt")
+    },
+    blockIsActive: function() {
+        return this.blockInView() && this.blockHasPromptUI()
+    },
+    // Block UI
+    addHTMLToBlock: function() {
         let termElement = this.block.getElement()
-        termElement.querySelector(".rm-block-main").classList.add("roamTerm")
+        termElement.querySelector(".rm-block-main").classList.add("roamsh-prompt")
         let prefix = this.createPrefixElement(configs.ROAMSH_PREFIX)
         termElement
             .querySelector(".controls")
             .insertAdjacentElement("afterEnd", prefix)
-        this.update()
     },
-    removeHTML: function() {
+    removeHTMLFromBlock: function() {
         termElement = this.block.getElement()
-        termElement.querySelector(".rm-block-main").classList.remove("roamTerm")
+        termElement.querySelector(".rm-block-main").classList.remove("roamsh-prompt")
         let prefix = termElement.querySelector(".prompt-prefix-area")
         if (prefix) prefix.remove()
     },
@@ -152,51 +142,6 @@ Prompt.prototype = {
         prefixElement.appendChild(prefixContent)
         return prefixElement
     },
-    // Properties
-    blockExists: function() {
-        return this.block.exists()
-    },
-    blockInView: function() {
-        return this.block.getElement() !== null
-    },
-    blockIsFocused: function() {
-        return this.block.isFocused()
-    },
-    isActive: function() {
-        if (!this.blockExists()) return false
-        if (!this.blockInView()) return false
-        termElement = this.block.getElement()
-        return termElement.querySelector(".rm-block-main").classList.contains("roamTerm")
-    },
-    isEmpty: function() {
-        return this.getString() === ""
-    },
-    getString: function () {
-        if (this.blockIsFocused()) {
-            return this.block.getTextAreaElement().value
-        } else {
-            return this.block.getElement().innerText
-        }
-    },
-    // Maintain UI
-    update: function() {
-        this.current = this.getString()
-        let prefix = this.getPrefixElement()
-        let input = this.getInputElement() 
-        prefix.style.height = input.clientHeight + "px" 
-    },
-    connectObserver: function() {
-        const targetNode = this.block.getElement();
-        const config = { childList: true, subtree: true };
-        this.update = this.update.bind(this)
-        this.observer = new MutationObserver(this.update);
-        this.observer.observe(targetNode, config);
-    },
-    disconnectObserver: function() {
-        if (!this.observer) return;
-        this.observer.disconnect();
-        this.observer = null;
-    },
     getPrefixElement: function() {
         let el = this.block.getElement()
         return el ? el.querySelector(".prompt-prefix-area") : null
@@ -204,78 +149,128 @@ Prompt.prototype = {
     getInputElement: function() {
         let el = this.block.getElement()
         return el ? el.querySelector(".rm-block__input") : null
+    },
+    // Listeners
+    executeListener: function(e) {
+        if (e.ctrlKey && e.metaKey && e.key==="Enter") {
+            if (!this.isEmpty()) {
+                this.execute()
+            }
+        }
+    },
+    goToPrevListener: function(e) {
+        if (e.ctrlKey && e.metaKey && e.key==="ArrowUp") {
+            this.goToPrev()
+        }
+    },
+    goToNextListener: function(e) {
+        if (e.ctrlKey && e.metaKey && e.key==="ArrowDown") {
+            this.goToNext()
+        }
+    },
+    addListenersToBlock: function() {
+        let el = this.block.getElement()
+        this.executeListener = this.executeListener.bind(this)
+        this.goToPrevListener = this.goToPrevListener.bind(this)
+        this.goToNextListener = this.goToNextListener.bind(this)        
+        el.addEventListener("keydown", this.executeListener)
+        el.addEventListener("keydown", this.goToPrevListener)
+        el.addEventListener("keydown", this.goToNextListener)
+    },
+    removeListenersFromBlock: function() {
+        let el = this.block.getElement()
+        el.removeEventListener("keydown", this.executeListener)
+        el.removeEventListener("keydown", this.goToPrevListener)
+        el.removeEventListener("keydown", this.goToNextListener)
+    },
+    connectObserverToBlock: function() {
+        const targetNode = this.block.getElement();
+        const config = { childList: true, subtree: true };
+        this.updateUIonBlock = this.updateUIonBlock.bind(this)
+        this.observer = new MutationObserver(this.updateUIonBlock);
+        this.observer.observe(targetNode, config);
+    },
+    disconnectObserverFromBlock: function() {
+        if (!this.observer) return;
+        this.observer.disconnect();
+        this.observer = null;
+    },
+    // Helpers
+    reportError(error) {
+        errorCodeBlock = "`".repeat(3) + "plain text\n" + error.toString() + "`".repeat(3)
+        this.block.addChild(errorCodeBlock)
+        throw error
     }
 }
-
 
 Terminal = {
     prompts: {},
     observer: null,
-    // Prompt stuff
-    getPrompt: function(block) {
-        let roamTerm = this.prompts[block.uid]
-        if (!roamTerm) {
-            roamTerm = new Prompt(block)
-            this.prompts[block.uid] = roamTerm
-        }
-        return roamTerm
-    },
-    activatePrompt: function(roamTerm) {
-        roamTerm.activate()
-        this.prompts[roamTerm.block.uid] = roamTerm
-        if (this.count() === 1) {
-            this.connectObserver()
-        }
-    },
-    deactivatePrompt: function(roamTerm) {
-        roamTerm.deactivate()
-        delete this.prompts[roamTerm.block.uid]
-        if (this.count() === 0) {
-            this.disconnectObserver()
-        }
-    },
-    executePrompt: function(roamTerm) {
-        roamTerm.execute()
-    },
-    togglePrompt: function(block) {
-        const prompt = this.getPrompt(block)
-        if (prompt.isActive()) {
-            this.deactivatePrompt(prompt)
+    callbacks: [],
+    // User affordances
+    commandPalleteTogglePrompt: function() {
+        let block = Block.getFocused()
+        let prompt = this.getPrompt(block)
+        if(!prompt) {
+            this.createPrompt(block)
         } else {
-            this.activatePrompt(prompt)
+            this.deletePrompt(prompt)
+        }
+    },
+    hotkeyTogglePrompt: function(e) {
+        if (e.ctrlKey && e.metaKey && e.key == "Enter") {
+            let block = Block.getFocused()
+            let prompt = this.getPrompt(block)
+            if(!prompt) {
+                this.createPrompt(block)
+            } else if(prompt.isEmpty()) {
+                this.deletePrompt(prompt)
+            }
+        }
+    },
+    // Prompt CRUD
+    createPrompt: function(block = null) {
+        block = block || Block.getFocused()
+        let prompt = Prompt.create(block, this.callbacks)
+        this.prompts[block.uid] = prompt
+        if(this.count() === 1) {
+            this.startUpdatePromptsOnViewChange()
         }
         return prompt
     },
-    togglePromptOrExecute: function(block) {
-        const roamTerm = this.getPrompt(block)
-        if (roamTerm.isActive()) {
-            if (!roamTerm.isEmpty()) {
-                this.executePrompt(roamTerm)
-            } else {
-                this.deactivatePrompt(roamTerm)
-            }
-        } else {
-            this.activatePrompt(roamTerm)
+    getPrompt: function(block = null) {
+        block = block || Block.getFocused()
+        return this.prompts[block.uid]
+    },
+    updatePrompt: function(prompt) {
+        if (!prompt.blockExists()) {
+            this.deletePrompt(prompt)
+        } else if (prompt.blockInView() && !prompt.blockHasPromptUI()) {
+            prompt.addUItoBlock()
         }
     },
-    // Maintain UI and state
-    update: function() {
-        for(let [uid, prompt] of Object.entries(this.prompts)) {
-            if (!prompt.blockExists()) {
-                this.deactivatePrompt(prompt)
-            } else if (!prompt.isActive() && prompt.blockInView()) {
-                this.activatePrompt(prompt)
-            }
+    deletePrompt: function(prompt) {
+        prompt.removeUIFromBlock()
+        delete this.prompts[prompt.block.uid]
+        if(this.count() === 0) {
+            this.stopUpdatePromptsOnViewChange()
         }
     },
-    connectObserver: function() {
-        const targetNode = document.querySelector('.roam-article');
+    // Maintain prompt UI and state
+    updatePrompts: function() {
+        // Update prompts
+        for(let prompt of Object.values(this.prompts)) {
+            this.updatePrompt(prompt)
+        }
+    },
+    startUpdatePromptsOnViewChange: function() {
+        const targetNode = document.querySelector('.roam-app');
         const config = { childList: true, subtree: true };
-        this.update = this.update.bind(this)
-        this.observer = new MutationObserver(this.update);
+        this.updatePrompts = this.updatePrompts.bind(this)
+        this.observer = new MutationObserver(this.updatePrompts);
         this.observer.observe(targetNode, config);
     },
-    disconnectObserver: function() {
+    stopUpdatePromptsOnViewChange: function() {
         if (!this.observer) return;
         this.observer.disconnect();
         this.observer = null;
@@ -285,13 +280,18 @@ Terminal = {
         this.addStyle()
         this.addCommandToPallete()
         this.addHotkeyListener()
+        this.resetCallbacks()
     },
     tearDown: function() {
         for (let [uid, prompt] of Object.entries(this.prompts)) {
-            this.deactivatePrompt(prompt)
+            this.deletePrompt(prompt)
         }
         this.removeCommandFromPallete()
         this.removeHotkeyListener()
+        this.callbacks = []
+    },
+    resetCallbacks: function() {
+        this.callbacks = [defaultPromptCallback]
     },
     addStyle: function() {
         let el = document.getElementById(configs.ROAMSH_CSS_ID);
@@ -304,31 +304,11 @@ Terminal = {
         document.getElementsByTagName("head")[0].appendChild(el);
         return el;
     },
-    commandPaletteCallback: function() {
-        let block = Block.getFocused()
-        const roamTerm = this.getPrompt(block)
-        if (roamTerm.isActive()) {
-            this.deactivatePrompt(roamTerm)
-        } else {
-            this.activatePrompt(roamTerm)
-        }
-    },
-    hotkeyCallback: function(e) {
-        if (e.ctrlKey && e.metaKey && e.key == "Enter") {
-            let block = Block.getFocused()
-            const roamTerm = this.getPrompt(block)
-            if (roamTerm.isActive() && roamTerm.isEmpty()) {
-                this.deactivatePrompt(roamTerm)
-            } else {
-                this.activatePrompt(roamTerm)
-            }
-        }
-    },
     addCommandToPallete: function() {
-        this.commandPaletteCallback = this.commandPaletteCallback.bind(this)
+        this.commandPalleteTogglePrompt = this.commandPalleteTogglePrompt.bind(this)
         window.roamAlphaAPI.ui.commandPalette.addCommand({
             label: configs.ROAMSH_TERM_LABEL, 
-            callback: this.commandPaletteCallback    
+            callback: this.commandPalleteTogglePrompt    
         })
     },
     removeCommandFromPallete: function() {
@@ -336,13 +316,13 @@ Terminal = {
             label: configs.ROAMSH_TERM_LABEL})
     },
     addHotkeyListener: function() {
-        this.hotkeyCallback = this.hotkeyCallback.bind(this)
+        this.hotkeyTogglePrompt = this.hotkeyTogglePrompt.bind(this)
         const roamTerminal = document.querySelector(".roam-app") 
-        roamTerminal.addEventListener("keydown", this.hotkeyCallback) 
+        roamTerminal.addEventListener("keydown", this.hotkeyTogglePrompt) 
     },
     removeHotkeyListener: function() {
         const roamTerminal = document.querySelector(".roam-app") 
-        roamTerminal.removeEventListener("keydown", this.hotkeyCallback)
+        roamTerminal.removeEventListener("keydown", this.hotkeyTogglePrompt)
     },
     // Helpers
     count: function() {
@@ -350,4 +330,29 @@ Terminal = {
     },
 }
 
-module.exports = { Terminal, Prompt }
+function formatResult(result) {
+    formatFunction = (f) => f.toString().split("\n").slice(0,1) + "}"
+    if(!result) return
+    // Put objects and functions inside code blocks
+    if(typeof(result) === 'object') {
+        let replacer = (k, v) => typeof(v) === 'function' ? formatFunction(v) : v
+        let json = JSON.stringify(result, replacer, "\t")
+        return '`'.repeat(3) + 'javascript\n' + json + '`'.repeat(3)
+    }
+    if(typeof(result) === 'function') {
+        return '`'.repeat(3) + 'javascript\n' + formatFunction(f) + '`'.repeat(3)
+    }
+    // and everything else as a string 
+    return result.toString()
+}
+
+async function defaultPromptCallback(prompt, command, result, func, args) {
+    // Clear prompt
+    await prompt.block.update("");
+    // Add result below prompt
+    if(!result) return
+    result = formatResult(result)
+    await prompt.block.addChild(result)
+}
+
+module.exports = { Terminal, Prompt, formatResult }

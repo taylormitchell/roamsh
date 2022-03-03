@@ -79,12 +79,13 @@ Block.prototype = {
         return res
     },
     move: async function (location) {
-        await window.roamAlphaAPI.moveBlock(
+        window.roamAlphaAPI.moveBlock(
             {
                 "location": { "parent-uid": location.parentUid, "order": location.order },
                 "block": { "uid": this.uid }
             }
          );
+         return this
     },
     delete: async function () {
         await window.roamAlphaAPI.deleteBlock(
@@ -141,12 +142,15 @@ Block.prototype = {
         for(let [i, child] of this.getChildren().entries()) {
             await child.copy(new Location(block.uid, i), opts)
         }
+        return block
     },
     copyChildren: async function(location, opts = {recursive: true, reference: false}) {
+        let newChildren = [];
         for (let child of this.getChildren()) {
-            await child.copy(location, opts)
+            newChildren.push(await child.copy(location, opts))
             location.order += 1
         }
+        return newChildren
     },
     // UI
     toggleExpand: async function () {
