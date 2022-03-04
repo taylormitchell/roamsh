@@ -1,7 +1,7 @@
 let { Block, Page, Location } = require('./graph');
 let graph = require('./graph');
 let configs = require('./configs');
-const { CodeBlock } = require('./terminal');
+const { CodeBlock } = require('./shell');
 
 
 function argToLocation(arg) {

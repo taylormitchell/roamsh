@@ -1,13 +1,15 @@
 let path = require("./path") 
 let graph = require("./graph") 
 let commands = require("./commands") 
-let terminal = require("./terminal") 
+let shell = require("./shell") 
 let date = require("./date") 
 let configs = require("./configs") 
 let util = require("./util") 
 
-// Set up terminal
-terminal.Terminal.setUp()
+// Set up shell
+let setUp = () => shell.Shell.setUp()
+let tearDown = () => shell.Shell.tearDown()
+setUp()
 
 // Create global variables for built-in commands
 mv = moveBlock = commands.moveBlock
@@ -25,7 +27,7 @@ run = commands.run
 js = commands.js
 ud = commands.updateBlock
 
-// Load user commands defined in configs.ROAMSH_PATHS
+// Load user commands
 commands.loadUserCommands()
 
-module.exports = { path, graph, commands, terminal, date, configs, util, ...graph }
+module.exports = { path, graph, commands, shell, date, configs, util, ...graph, setUp, tearDown }

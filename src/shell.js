@@ -175,17 +175,24 @@ CodeBlock.getFocused = function() {
 }
 
 CodeBlock.prototype.isFocused = function() {
-    return this.getContentElement().classList.contains("focus-visible")
+    let el = this.getContentElement()
+    if(!el) return null
+    return el.classList.contains("focus-visible")
 }
 CodeBlock.prototype.getContentElement = function() {
-    return this.block.getElement().querySelector(".cm-content")
+    let el = this.block.getElement()
+    if (!el) return null
+    return el.querySelector(".cm-content")
 }
 CodeBlock.prototype.getLanguageElement = function() {
-    return this.block.getElement().querySelector(".rm-code-block__settings-bar .bp3-button-text")
+    let el = this.block.getElement()
+    if(!el) return null
+    return el.querySelector(".rm-code-block__settings-bar .bp3-button-text")
 }
-
 CodeBlock.prototype.getCode = function() {
-    return this.getContentElement().innerText
+    let el = this.getContentElement()
+    if (!el) return null
+    return el.innerText
 }
 CodeBlock.prototype.getLanguage = function() {
     // from element
@@ -220,7 +227,7 @@ CodeBlock.prototype.toMarkdown = function() {
 
 
 
-Terminal = {
+Shell = {
     prompts: {},
     observer: null,
     promptCallbacks: [],
@@ -375,12 +382,12 @@ Terminal = {
     },
     addHotkeyListener: function() {
         this.hotkeyHandler = this.hotkeyHandler.bind(this)
-        const roamTerminal = document.querySelector(".roam-app") 
-        roamTerminal.addEventListener("keydown", this.hotkeyHandler) 
+        const roamShell = document.querySelector(".roam-app") 
+        roamShell.addEventListener("keydown", this.hotkeyHandler) 
     },
     removeHotkeyListener: function() {
-        const roamTerminal = document.querySelector(".roam-app") 
-        roamTerminal.removeEventListener("keydown", this.hotkeyHandler)
+        const roamShell = document.querySelector(".roam-app") 
+        roamShell.removeEventListener("keydown", this.hotkeyHandler)
     },
     // Helpers
     count: function() {
@@ -427,4 +434,4 @@ async function defaultPromptCallback(prompt, result, command, func, args) {
     await prompt.block.addChild(result)
 }
 
-module.exports = { Terminal, Prompt, formatResult, CodeBlock }
+module.exports = { Shell, Prompt, formatResult, CodeBlock }
