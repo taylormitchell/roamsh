@@ -157,8 +157,7 @@ Prompt.prototype = {
     },
 }
 
-// function CodeBlock(block, index = 0) {
-function CodeBlock(block) {
+function Script(block) {
     this.block = block
     let string = block.getString()
     if(!(string.startsWith('```') && string.endsWith('```'))) {
@@ -166,35 +165,35 @@ function CodeBlock(block) {
     }
 }
 
-CodeBlock.getFocused = function() {
+Script.getFocused = function() {
     let el = document.activeElement.closest(".cm-content")
     if(!el) return null
     let uid = util.elementToBlockUid(el)
     let block = new Block(uid)
-    return new CodeBlock(block)
+    return new Script(block)
 }
 
-CodeBlock.prototype.isFocused = function() {
+Script.prototype.isFocused = function() {
     let el = this.getContentElement()
     if(!el) return null
     return el.classList.contains("focus-visible")
 }
-CodeBlock.prototype.getContentElement = function() {
+Script.prototype.getContentElement = function() {
     let el = this.block.getElement()
     if (!el) return null
     return el.querySelector(".cm-content")
 }
-CodeBlock.prototype.getLanguageElement = function() {
+Script.prototype.getLanguageElement = function() {
     let el = this.block.getElement()
     if(!el) return null
     return el.querySelector(".rm-code-block__settings-bar .bp3-button-text")
 }
-CodeBlock.prototype.getCode = function() {
+Script.prototype.getCode = function() {
     let el = this.getContentElement()
     if (!el) return null
     return el.innerText
 }
-CodeBlock.prototype.getLanguage = function() {
+Script.prototype.getLanguage = function() {
     // from element
     let el = this.getLanguageElement()
     if(el) return el.innerText
@@ -207,7 +206,7 @@ CodeBlock.prototype.getLanguage = function() {
     return null
 }
 
-CodeBlock.prototype.execute = async function() {
+Script.prototype.execute = async function() {
     let code = this.getCode()
     let asyncCode = `
         ( 
@@ -218,7 +217,7 @@ CodeBlock.prototype.execute = async function() {
     let result = await (async () => eval(asyncCode))()
     return [code, result]
 } 
-CodeBlock.prototype.toMarkdown = function() {
+Script.prototype.toMarkdown = function() {
     if(this.isFocused()) {
         return "```javascript\n" + this.getCode() + "```"
     }
@@ -244,22 +243,22 @@ Shell = {
             this.reportError(error, prompt.block)
         }
     },
-    executeCodeBlock: async function(codeBlock) {
-        if(!codeBlock) codeBlock = CodeBlock.getFocused()
+    executeScript: async function(script) {
+        if(!script) script = Script.getFocused()
         try {
-            let [code, result] = await codeBlock.execute()
+            let [code, result] = await script.execute()
             for(let callback of this.codeBlockCallbacks) {
-                await callback(codeBlock, result, code)
+                await callback(script, result, code)
             }
         } catch (error) {
-            this.reportError(error, codeBlock.block)
+            this.reportError(error, script.block)
         }
     },
     hotkeyHandler: function(e) {
         if (e.ctrlKey && e.metaKey && e.key == "Enter") {
-            let codeBlock = CodeBlock.getFocused()
-            if(codeBlock) {
-                this.executeCodeBlock()
+            let script = Script.getFocused()
+            if(script) {
+                this.executeScript()
                 return
             }
             let block = Block.getFocused()
@@ -418,11 +417,11 @@ function formatResult(result) {
 }
 
 
-async function defaultCodeBlockCallback(codeBlock, result, code) {
+async function defaultCodeBlockCallback(script, result, code) {
     // Add result below prompt
     if(!result) return
     result = formatResult(result)
-    await codeBlock.block.addChild(result)
+    await script.block.addChild(result)
 }
 
 async function defaultPromptCallback(prompt, result, command, func, args) {
@@ -434,4 +433,4 @@ async function defaultPromptCallback(prompt, result, command, func, args) {
     await prompt.block.addChild(result)
 }
 
-module.exports = { Shell, Prompt, formatResult, CodeBlock }
+module.exports = { Shell, Prompt, formatResult, Script }

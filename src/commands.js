@@ -1,7 +1,7 @@
 let { Block, Page, Location } = require('./graph');
 let graph = require('./graph');
 let configs = require('./configs');
-const { CodeBlock } = require('./shell');
+const { Script } = require('./shell');
 
 
 function argToLocation(arg) {
@@ -122,7 +122,7 @@ async function linkChildren(src='^', dst='/', opts = {recursive: true}) {
 
 async function run(src="^") {
     let block = argToBlock(src)
-    let codeBlock = new CodeBlock(block)
+    let codeBlock = new Script(block)
     if(codeBlock.getLanguage() !== 'javascript') {
         throw new Error('Only javascript code blocks are supported')
     }
