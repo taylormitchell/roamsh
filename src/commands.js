@@ -49,10 +49,9 @@ function argToBlock(arg) {
 
 // Commands
 
-async function createBlock(string="", dst="") {
+async function createBlock(string="", dst="/") {
     let dstLoc = argToLocation(dst)
-    let newBlock = await Block.create(string.toString(), dstLoc)
-    return newBlock.toRef()
+    await Block.create(string.toString(), dstLoc)
 }
 
 async function deleteBlock(src="^") {
@@ -60,18 +59,16 @@ async function deleteBlock(src="^") {
     await block.delete()
 }
 
-async function moveBlock(src="^", dst="") {
+async function moveBlock(src="^", dst="/") {
     let srcBlock = argToBlock(src)
     let dstLoc = argToLocation(dst)
-    srcBlock.move(dstLoc)
-    return srcBlock.toRef()
+    await srcBlock.move(dstLoc)
 }
 
-async function copyBlock(src="^", dst="", opts = {recursive: true}) {
+async function copyBlock(src="^", dst="/", opts = {recursive: true}) {
     let srcBlock = argToBlock(src)
     let dstLoc = argToLocation(dst)
-    let newBlock = await srcBlock.copy(dstLoc, opts)
-    return newBlock.toRef()
+    await srcBlock.copy(dstLoc, opts)
 }
 
 async function updateBlock(string, dst="^") {
@@ -79,15 +76,13 @@ async function updateBlock(string, dst="^") {
         throw new Error("Missing string argument")
     }
     let dstBlock = argToBlock(dst)
-    let newBlock = await dstBlock.update(string)
-    return newBlock.toRef()
+    await dstBlock.update(string)
 }
 
-async function refBlock(src="^", dst="") {
+async function refBlock(src="^", dst="/") {
     let srcBlock = argToBlock(src)
     let dstLoc = argToLocation(dst)
-    let newBlock = await Block.create(srcBlock.toRef(), dstLoc)
-    return newBlock.toRef()
+    await Block.create(srcBlock.toRef(), dstLoc)
 }
 
 async function toggleBlock(src='^') {
@@ -104,7 +99,7 @@ async function echo(string) {
     return string
 }
 
-async function cat(src='^', dst="") {
+async function cat(src='^') {
     let block = argToBlock(src)
     return block.getString()
     //let dstLoc = argToLocation(dst)
@@ -112,16 +107,13 @@ async function cat(src='^', dst="") {
     //return newBlock.toRef()
 }
 
-async function listChildren(src='^', dst='', opts = {recursive: true}) {
+async function listChildren(src='^', dst='/', opts = {recursive: true}) {
     let srcBlock = argToBlock(src)
     let dstLoc = argToLocation(dst)
-    let newChildren = await srcBlock.copyChildren(dstLoc, opts)
-    if(newChildren.length) {
-        return `${newChildren[0].toRef()}:${newChildren.slice(-1)[0].toRef()}`
-    }
+    await srcBlock.copyChildren(dstLoc, opts)
 }
 
-async function linkChildren(src='^', dst="", opts = {recursive: true}) {
+async function linkChildren(src='^', dst='/', opts = {recursive: true}) {
     opts.reference = true;
     return await listChildren(src, dst, opts)
 }
@@ -168,7 +160,7 @@ function loadUserCommands(recursive=true) {
 
     for(let path of configs.ROAMSH_PATHS) {
         let node = graph.getByPath(path)
-        if(!(node instanceof Block)) continue
+        if(node instanceof Location) continue
         runCommandsBelow(node, recursive)
     }
 }
