@@ -14,7 +14,7 @@ mv = moveBlock = commands.moveBlock
 cp = copyBlock = commands.copyBlock
 ln = refBlock = commands.refBlock
 rm = deleteBlock = commands.deleteBlock
-mk = createBlock = commands.createBlock
+touch = createBlock = commands.createBlock
 ex = toggleBlock = commands.toggleBlock
 zm = zoom = commands.zoom 
 ls = listChildren = commands.listChildren

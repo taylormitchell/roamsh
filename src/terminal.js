@@ -82,7 +82,6 @@ Prompt.prototype = {
         } 
         if(!this.blockHasPromptUI()) {
             this.addHTMLToBlock()
-            this.addListenersToBlock()
             this.connectObserverToBlock()
             this.updateUIonBlock()
         }
@@ -90,7 +89,6 @@ Prompt.prototype = {
     removeUIFromBlock: function() {
         if(!this.blockIsActive()) return
         this.removeHTMLFromBlock()
-        this.removeListenersFromBlock()
         this.disconnectObserverFromBlock()
     },
     updateUIonBlock: function() {
@@ -151,38 +149,6 @@ Prompt.prototype = {
         return el ? el.querySelector(".rm-block__input") : null
     },
     // Listeners
-    executeListener: function(e) {
-        if (e.ctrlKey && e.metaKey && e.key==="Enter") {
-            if (!this.isEmpty()) {
-                this.execute()
-            }
-        }
-    },
-    goToPrevListener: function(e) {
-        if (e.ctrlKey && e.metaKey && e.key==="ArrowUp") {
-            this.goToPrev()
-        }
-    },
-    goToNextListener: function(e) {
-        if (e.ctrlKey && e.metaKey && e.key==="ArrowDown") {
-            this.goToNext()
-        }
-    },
-    addListenersToBlock: function() {
-        let el = this.block.getElement()
-        this.executeListener = this.executeListener.bind(this)
-        this.goToPrevListener = this.goToPrevListener.bind(this)
-        this.goToNextListener = this.goToNextListener.bind(this)        
-        el.addEventListener("keydown", this.executeListener)
-        el.addEventListener("keydown", this.goToPrevListener)
-        el.addEventListener("keydown", this.goToNextListener)
-    },
-    removeListenersFromBlock: function() {
-        let el = this.block.getElement()
-        el.removeEventListener("keydown", this.executeListener)
-        el.removeEventListener("keydown", this.goToPrevListener)
-        el.removeEventListener("keydown", this.goToNextListener)
-    },
     connectObserverToBlock: function() {
         const targetNode = this.block.getElement();
         const config = { childList: true, subtree: true };
@@ -203,29 +169,76 @@ Prompt.prototype = {
     }
 }
 
+function CodeBlock(element) {
+    this.element = element
+}
+CodeBlock.getFocused = function() {
+    let el = document.activeElement.closest(".cm-content")
+    if(!el) return null
+    return new CodeBlock(el)
+}
+CodeBlock.prototype.execute = function() {
+    let code = this.getCode()
+    let res = eval(code)
+    if(res){
+        res = formatResult(res)
+        let block = Block.getFocused()
+        block.addChild(res)
+    }
+} 
+CodeBlock.prototype.getCode = function() {
+    return this.element.innerText
+}
+
+
 Terminal = {
     prompts: {},
     observer: null,
     callbacks: [],
     // User affordances
-    commandPalleteTogglePrompt: function() {
+    executePrompt: async function(prompt) {
+        if(!prompt) prompt = Prompt.getFocused()
+        return await prompt.execute()
+    },
+    executeCodeBlock: async function(codeBlock) {
+        if(!codeBlock) codeBlock = CodeBlock.getFocused()
+        return await codeBlock.execute()
+    },
+    hotkeyHandler: function(e) {
+        if (e.ctrlKey && e.metaKey && e.key == "Enter") {
+            let codeBlock = CodeBlock.getFocused()
+            if(codeBlock) {
+                this.executeCodeBlock()
+                return
+            }
+            let block = Block.getFocused()
+            if(block) {
+                let prompt = this.getPrompt(block)
+                if(!prompt) {
+                    this.createPrompt(block)
+                } else if(prompt.isEmpty()) {
+                    this.deletePrompt(prompt)
+                } else {
+                    this.executePrompt(prompt)
+                }
+            }
+        } else if (e.ctrlKey && e.metaKey && e.key==="ArrowUp") {
+            let prompt = this.getPrompt()
+            if(!prompt) return
+            prompt.goToPrev()
+        } else if (e.ctrlKey && e.metaKey && e.key==="ArrowDown") {
+            let prompt = this.getPrompt()
+            if(!prompt) return
+            prompt.goToNext()
+        }
+    },
+    commandPalleteHandler: function() {
         let block = Block.getFocused()
         let prompt = this.getPrompt(block)
         if(!prompt) {
             this.createPrompt(block)
         } else {
             this.deletePrompt(prompt)
-        }
-    },
-    hotkeyTogglePrompt: function(e) {
-        if (e.ctrlKey && e.metaKey && e.key == "Enter") {
-            let block = Block.getFocused()
-            let prompt = this.getPrompt(block)
-            if(!prompt) {
-                this.createPrompt(block)
-            } else if(prompt.isEmpty()) {
-                this.deletePrompt(prompt)
-            }
         }
     },
     // Prompt CRUD
@@ -305,10 +318,10 @@ Terminal = {
         return el;
     },
     addCommandToPallete: function() {
-        this.commandPalleteTogglePrompt = this.commandPalleteTogglePrompt.bind(this)
+        this.commandPalleteHandler = this.commandPalleteHandler.bind(this)
         window.roamAlphaAPI.ui.commandPalette.addCommand({
             label: configs.ROAMSH_TERM_LABEL, 
-            callback: this.commandPalleteTogglePrompt    
+            callback: this.commandPalleteHandler    
         })
     },
     removeCommandFromPallete: function() {
@@ -316,13 +329,13 @@ Terminal = {
             label: configs.ROAMSH_TERM_LABEL})
     },
     addHotkeyListener: function() {
-        this.hotkeyTogglePrompt = this.hotkeyTogglePrompt.bind(this)
+        this.hotkeyHandler = this.hotkeyHandler.bind(this)
         const roamTerminal = document.querySelector(".roam-app") 
-        roamTerminal.addEventListener("keydown", this.hotkeyTogglePrompt) 
+        roamTerminal.addEventListener("keydown", this.hotkeyHandler) 
     },
     removeHotkeyListener: function() {
         const roamTerminal = document.querySelector(".roam-app") 
-        roamTerminal.removeEventListener("keydown", this.hotkeyTogglePrompt)
+        roamTerminal.removeEventListener("keydown", this.hotkeyHandler)
     },
     // Helpers
     count: function() {
@@ -347,8 +360,8 @@ function formatResult(result) {
 }
 
 async function defaultPromptCallback(prompt, command, result, func, args) {
-    // // Clear prompt
-    // await prompt.block.update("");
+    // Clear prompt
+    await prompt.block.update("");
     // Add result below prompt
     if(!result) return
     result = formatResult(result)
