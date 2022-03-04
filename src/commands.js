@@ -136,27 +136,24 @@ async function js(code = "") {
 
 // Run all code blocks under user paths
 function loadUserCommands(recursive=true) {
-    function isCodeBlock(node) {
-        string = node.getString()
-        return string.startsWith('`'.repeat(3) + 'javascript') &&
-               string.endsWith('`'.repeat(3))
-    }
-
-    function runCommandsBelow(node, recursive=true) {
+    function runScriptsBelow(node, recursive=true) {
         for(let child of node.getChildren()) {
-            if(isCodeBlock(child)) {
-              run(child.toRef())
-            }
+            let script;
+            try {
+                // The Script constructor will raise an error 
+                // if the block isn't a script 
+                script = new Script(child)
+            } catch(e) {}
+            if(script) script.execute()
             if(recursive) {
-              runCommandsBelow(child)
+                runScriptsBelow(child)
             }
         }
     }
-
     for(let path of configs.ROAMSH_PATHS) {
         let node = graph.getByPath(path)
         if(node instanceof Location) continue
-        runCommandsBelow(node, recursive)
+        runScriptsBelow(node, recursive)
     }
 }
 
