@@ -1,6 +1,7 @@
 let { Block, Page, Location } = require('./graph');
 let graph = require('./graph');
 let configs = require('./configs');
+const { CodeBlock } = require('./terminal');
 
 
 function argToLocation(arg) {
@@ -121,19 +122,12 @@ async function linkChildren(src='^', dst='/', opts = {recursive: true}) {
 
 async function run(src="^") {
     let block = argToBlock(src)
-    let string = block.getString().trim() 
-    if(!(string.startsWith('`'.repeat(3)) && string.endsWith('`'.repeat(3)))) {
-        throw new Error(`Block(uid=${block.uid}) at "${src}" isn't a code block`)
-    }
-    string = string
-        .replace(/^```/, "")
-        .replace(/```$/, "")
-        .trim()
-    if(!string.startsWith('javascript')) {
+    let codeBlock = new CodeBlock(block)
+    if(codeBlock.getLanguage() !== 'javascript') {
         throw new Error('Only javascript code blocks are supported')
     }
-    let code = string.replace(/^javascript/, '').trim()
-    return await (async () => eval(code))();
+    let [code, result] = await codeBlock.execute()
+    return result
 }
 
 async function js(code = "") {

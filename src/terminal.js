@@ -1,6 +1,6 @@
 let { RoamResearchShell } = require('./rrsh');
 let util = require('./util');
-let { Block, Page, Roam } = require('./graph');
+let { Block, Page, Roam, getLocation } = require('./graph');
 const configs = require('./configs');
 
 function Prompt(block) {
@@ -96,7 +96,7 @@ Prompt.prototype = {
         return this.block.exists()
     },
     blockInView: function() {
-        return this.block.getElement() !== null
+        return this.block.inView()
     },
     blockIsFocused: function() {
         return this.block.isFocused()
@@ -155,22 +155,51 @@ Prompt.prototype = {
         this.observer.disconnect();
         this.observer = null;
     },
-    // Helpers
-    reportError(error) {
-        errorCodeBlock = "`".repeat(3) + "plain text\n" + error.toString() + "`".repeat(3)
-        this.block.addChild(errorCodeBlock)
-        throw error
+}
+
+// function CodeBlock(block, index = 0) {
+function CodeBlock(block) {
+    this.block = block
+    let string = block.getString()
+    if(!(string.startsWith('```') && string.endsWith('```'))) {
+        throw new Error("Only blocks containings exactly one code block are supported")
     }
 }
 
-function CodeBlock(element) {
-    this.element = element
-}
 CodeBlock.getFocused = function() {
     let el = document.activeElement.closest(".cm-content")
     if(!el) return null
-    return new CodeBlock(el)
+    let uid = util.elementToBlockUid(el)
+    let block = new Block(uid)
+    return new CodeBlock(block)
 }
+
+CodeBlock.prototype.isFocused = function() {
+    return this.getContentElement().classList.contains("focus-visible")
+}
+CodeBlock.prototype.getContentElement = function() {
+    return this.block.getElement().querySelector(".cm-content")
+}
+CodeBlock.prototype.getLanguageElement = function() {
+    return this.block.getElement().querySelector(".rm-code-block__settings-bar .bp3-button-text")
+}
+
+CodeBlock.prototype.getCode = function() {
+    return this.getContentElement().innerText
+}
+CodeBlock.prototype.getLanguage = function() {
+    // from element
+    let el = this.getLanguageElement()
+    if(el) return el.innerText
+    // from block
+    let string = this.block.getString()
+    let match = string.match(/^```(.*)\n/)
+    if(match) {
+        return match[1]
+    }
+    return null
+}
+
 CodeBlock.prototype.execute = async function() {
     let code = this.getCode()
     let asyncCode = `
@@ -182,26 +211,11 @@ CodeBlock.prototype.execute = async function() {
     let result = await (async () => eval(asyncCode))()
     return [code, result]
 } 
-CodeBlock.prototype.getCode = function() {
-    return this.element.innerText
-}
-CodeBlock.prototype.getBlock = function() {
-    let uid = util.elementToBlockUid(this.element)
-    if(uid) {
-        return new Block(uid)
-    }
-    return null
-}
-CodeBlock.prototype.reportError = function(error) {
-    let block = this.getBlock()
-    if(block) {
-        errorCodeBlock = "`".repeat(3) + "plain text\n" + error.toString() + "`".repeat(3)
-        block.addChild(errorCodeBlock)
-    }
-    throw error
-}
 CodeBlock.prototype.toMarkdown = function() {
-    return "```javascript\n" + this.getCode() + "```"
+    if(this.isFocused()) {
+        return "```javascript\n" + this.getCode() + "```"
+    }
+    return this.block.getString()
 }
 
 
@@ -220,7 +234,7 @@ Terminal = {
                 await callback(prompt, result, command, func, args)
             }
         } catch (error) {
-            prompt.reportError(error)
+            this.reportError(error, prompt.block)
         }
     },
     executeCodeBlock: async function(codeBlock) {
@@ -231,7 +245,7 @@ Terminal = {
                 await callback(codeBlock, result, code)
             }
         } catch (error) {
-            codeBlock.reportError(error)
+            this.reportError(error, codeBlock.block)
         }
     },
     hotkeyHandler: function(e) {
@@ -372,6 +386,12 @@ Terminal = {
     count: function() {
         return Object.keys(this.prompts).length
     },
+    reportError: async function(error, block) {
+        if(!block) block = Block.getFocused()
+        errorCodeBlock = "`".repeat(3) + "plain text\n" + error.toString() + "`".repeat(3)
+        block.addChild(errorCodeBlock)
+        throw error
+    },
 }
 
 function formatResult(result) {
@@ -395,7 +415,7 @@ async function defaultCodeBlockCallback(codeBlock, result, code) {
     // Add result below prompt
     if(!result) return
     result = formatResult(result)
-    await codeBlock.getBlock().addChild(result)
+    await codeBlock.block.addChild(result)
 }
 
 async function defaultPromptCallback(prompt, result, command, func, args) {
@@ -407,4 +427,4 @@ async function defaultPromptCallback(prompt, result, command, func, args) {
     await prompt.block.addChild(result)
 }
 
-module.exports = { Terminal, Prompt, formatResult }
+module.exports = { Terminal, Prompt, formatResult, CodeBlock }

@@ -376,6 +376,9 @@ Block.prototype = {
     },
     toEmbed: function() {
         return `{{[[embed]]: ${this.toRef()}}}` 
+    },
+    inView: function() {
+        return this.getElement() !== null
     }
 }
 
