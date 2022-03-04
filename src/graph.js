@@ -1,5 +1,6 @@
 var { Path, pathToLocation } = require("./path") 
 var { sortParents, Location, NotFoundError } = require("./util") 
+let util = require("./util") 
 let { isBlockRef, isPageRef, isBlockUid, ParserError } = require("./str")
 var { toRoamString } = require("./date") 
 
@@ -51,19 +52,9 @@ function Block(idx) {
     ]`)
 }
 Block.getFocused = function() {
-    let res = roamAlphaAPI.ui.getFocusedBlock()
-    if (res) {
-        return new Block(res["block-uid"])
-    } else {
-        let el = document.activeElement
-        while(el && !(el.classList.contains("roam-block"))) {
-            el = el.parentElement 
-        }
-        let id = el.id || ""
-        let match = id.match(/block-input-.*\d\d-\d\d-\d\d\d\d-(.*)/) || []
-        if(match[1]) {
-            return new Block(match[1])
-        }    
+    let uid = util.getFocused()
+    if(uid) {
+        return new Block(uid)
     }
     return null
 }
@@ -657,7 +648,7 @@ function getLocation(idx) {
         if(res instanceof Location) {
             return res
         }
-        let block = new Block(idx)
+        let block = new Block(res)
         return block.toLocation()
     } else {
         throw new TypeError(`Invalid type: ${typeof(idx)}`) 

@@ -1,8 +1,9 @@
 let { RoamResearchShell } = require('./rrsh');
+let util = require('./util');
 let { Block, Page, Roam } = require('./graph');
 const configs = require('./configs');
 
-function Prompt(block, callbacks=[]) {
+function Prompt(block) {
     this.block = block
     this.uid = this.block.uid
     this.current = ""
@@ -10,15 +11,14 @@ function Prompt(block, callbacks=[]) {
     this.commandHistoryId = 0
     this.observer = null;
     this.interpreter = new RoamResearchShell()
-    this.callbacks = callbacks;
 }
 Prompt.getFocused = function() {
     let block = Block.getFocused()
     if (!block) return null
     return new Prompt(block)
 }
-Prompt.create = function(block, callbacks) {
-    let prompt = new Prompt(block, callbacks)
+Prompt.create = function(block) {
+    let prompt = new Prompt(block)
     prompt.addUItoBlock()
     return prompt
 },
@@ -173,26 +173,17 @@ CodeBlock.getFocused = function() {
 }
 CodeBlock.prototype.execute = function() {
     let code = this.getCode()
-    let res = eval(code)
-    if(res){
-        res = formatResult(res)
-        let block = Block.getFocused()
-        block.addChild(res)
-    }
+    result = eval(code)
+    return [code, result]
 } 
 CodeBlock.prototype.getCode = function() {
     return this.element.innerText
 }
 CodeBlock.prototype.getBlock = function() {
-    let el = this.element
-    while(el && !(el.classList.contains("roam-block"))) {
-        el = el.parentElement 
+    let uid = util.elementToBlockUid(this.element)
+    if(uid) {
+        return new Block(uid)
     }
-    let id = el.id || ""
-    let match = id.match(/block-input-.*\d\d-\d\d-\d\d\d\d-(.*)/) || []
-    if(match[1]) {
-        return new Block(match[1])
-    }    
     return null
 }
 CodeBlock.prototype.reportError = function(error) {
@@ -203,20 +194,24 @@ CodeBlock.prototype.reportError = function(error) {
     }
     throw error
 }
+CodeBlock.prototype.toMarkdown = function() {
+    return "```javascript\n" + this.getCode() + "```"
+}
 
 
 
 Terminal = {
     prompts: {},
     observer: null,
-    callbacks: [],
+    promptCallbacks: [],
+    codeBlockCallbacks: [],
     // User affordances
     executePrompt: async function(prompt) {
         if(!prompt) prompt = Prompt.getFocused()
         try {
             let [command, result, func, args] = await prompt.execute()
-            for(let callback of this.callbacks) {
-                await callback(prompt, command, result, func, args)
+            for(let callback of this.promptCallbacks) {
+                await callback(prompt, result, command, func, args)
             }
         } catch (error) {
             prompt.reportError(error)
@@ -225,7 +220,10 @@ Terminal = {
     executeCodeBlock: async function(codeBlock) {
         if(!codeBlock) codeBlock = CodeBlock.getFocused()
         try {
-            return await codeBlock.execute()
+            let [code, result] = await codeBlock.execute()
+            for(let callback of this.codeBlockCallbacks) {
+                await callback(codeBlock, result, code)
+            }
         } catch (error) {
             codeBlock.reportError(error)
         }
@@ -327,10 +325,11 @@ Terminal = {
         }
         this.removeCommandFromPallete()
         this.removeHotkeyListener()
-        this.callbacks = []
+        this.resetCallbacks()
     },
     resetCallbacks: function() {
-        this.callbacks = [defaultPromptCallback]
+        this.promptCallbacks = [defaultPromptCallback]
+        this.codeBlockCallbacks = [defaultCodeBlockCallback]
     },
     addStyle: function() {
         let el = document.getElementById(configs.ROAMSH_CSS_ID);
@@ -379,13 +378,21 @@ function formatResult(result) {
         return '`'.repeat(3) + 'javascript\n' + json + '`'.repeat(3)
     }
     if(typeof(result) === 'function') {
-        return '`'.repeat(3) + 'javascript\n' + formatFunction(f) + '`'.repeat(3)
+        return '`'.repeat(3) + 'javascript\n' + formatFunction(result) + '`'.repeat(3)
     }
     // and everything else as a string 
     return result.toString()
 }
 
-async function defaultPromptCallback(prompt, command, result, func, args) {
+
+async function defaultCodeBlockCallback(codeBlock, result, code) {
+    // Add result below prompt
+    if(!result) return
+    result = formatResult(result)
+    await codeBlock.getBlock().addChild(result)
+}
+
+async function defaultPromptCallback(prompt, result, command, func, args) {
     // Clear prompt
     await prompt.block.update("");
     // Add result below prompt

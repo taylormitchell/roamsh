@@ -71,7 +71,12 @@ function getString(uid) {
 }
 
 function getFocused(uid) {
-    return roamAlphaAPI.ui.getFocusedBlock()["block-uid"]
+    let res = roamAlphaAPI.ui.getFocusedBlock()
+    if(res) {
+        return res['block-uid']
+    }
+    let el = document.activeElement
+    return elementToBlockUid(el)
 }
 
 function isBlock(uid) {
@@ -110,6 +115,17 @@ function uidToId(uid) {
     ]`)
 }
 
+function elementToBlockUid(el) {
+    while(el && !(el.classList.contains("roam-block"))) {
+        el = el.parentElement 
+    }
+    if(!el || !el.id) return null
+    if(el.id.startsWith("block-input")) {
+        return el.id.slice(-9) 
+    }
+    return null
+}
+
 function Location(parentUid, order) {
     this.parentUid = parentUid
     this.order = order
@@ -127,5 +143,5 @@ function NotFoundError(message) {
 NotFoundError.prototype = Object.create(Error.prototype)
 NotFoundError.prototype.constructor = NotFoundError
 
-module.exports = {getParents, getParent, getChildren, getSiblings, getOrder, isBlock, isPage, uidToId, getString, getFocused, sortParents, Location, NotFoundError}
+module.exports = {getParents, getParent, getChildren, getSiblings, getOrder, isBlock, isPage, uidToId, getString, getFocused, sortParents, Location, NotFoundError, elementToBlockUid}
 
