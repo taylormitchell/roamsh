@@ -66,10 +66,7 @@ Block.getOpen = async function() {
     return null
 }
 Block.create = async function (string = "", location=null) {
-    if (!location) {
-        let block = Block.getFocusedBlock()
-        location = new Location(block.uid, 0)
-    }
+    location = getLocation(location)
     // Create block
     let uid = window.roamAlphaAPI.util.generateUID();
     await window.roamAlphaAPI.createBlock(
@@ -636,7 +633,9 @@ function getBlock(idx) {
 }
 
 function getLocation(idx) {
-    if(idx instanceof Location) {
+    if(!idx) {
+        return new Location(util.getFocused(), 0)
+    } else if(idx instanceof Location) {
         return idx
     } else if(idx instanceof Block) {
         return idx.toLocation()

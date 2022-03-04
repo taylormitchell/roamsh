@@ -171,9 +171,15 @@ CodeBlock.getFocused = function() {
     if(!el) return null
     return new CodeBlock(el)
 }
-CodeBlock.prototype.execute = function() {
+CodeBlock.prototype.execute = async function() {
     let code = this.getCode()
-    result = eval(code)
+    let asyncCode = `
+        ( 
+            async () => { 
+                ${code}
+            }
+        )()`
+    let result = await (async () => eval(asyncCode))()
     return [code, result]
 } 
 CodeBlock.prototype.getCode = function() {

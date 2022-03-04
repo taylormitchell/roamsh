@@ -96,7 +96,8 @@ async function zoom(src='^') {
 }
 
 async function echo(string) {
-    return string
+    let block = Block.getFocused()
+    await block.appendChild(string)
 }
 
 async function cat(src='^') {
