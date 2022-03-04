@@ -160,8 +160,8 @@ Prompt.prototype = {
 function Script(block) {
     this.block = block
     let string = block.getString()
-    if(!(string.startsWith('```') && string.endsWith('```'))) {
-        throw new Error("Only blocks containings exactly one code block are supported")
+    if(!(string.startsWith('```javascript') && string.endsWith('```'))) {
+        throw new Error("Only blocks containings exactly one javascript code block are supported")
     }
 }
 
@@ -190,8 +190,13 @@ Script.prototype.getLanguageElement = function() {
 }
 Script.prototype.getCode = function() {
     let el = this.getContentElement()
-    if (!el) return null
-    return el.innerText
+    if(el) return el.innerText
+    let string = this.block.getString()
+    let code = string
+        .replace(/^```javascript/, '')
+        .replace(/```$/, '')
+        .trim()
+    return code
 }
 Script.prototype.getLanguage = function() {
     // from element
