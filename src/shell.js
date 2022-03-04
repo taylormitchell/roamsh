@@ -235,7 +235,7 @@ Shell = {
     prompts: {},
     observer: null,
     promptCallbacks: [],
-    codeBlockCallbacks: [],
+    scriptCallbacks: [],
     // User affordances
     executePrompt: async function(prompt) {
         if(!prompt) prompt = Prompt.getFocused()
@@ -252,7 +252,7 @@ Shell = {
         if(!script) script = Script.getFocused()
         try {
             let [code, result] = await script.execute()
-            for(let callback of this.codeBlockCallbacks) {
+            for(let callback of this.scriptCallbacks) {
                 await callback(script, result, code)
             }
         } catch (error) {
@@ -360,7 +360,7 @@ Shell = {
     },
     resetCallbacks: function() {
         this.promptCallbacks = [defaultPromptCallback]
-        this.codeBlockCallbacks = [defaultCodeBlockCallback]
+        this.scriptCallbacks = [defaultScriptCallback]
     },
     addStyle: function() {
         let el = document.getElementById(configs.ROAMSH_CSS_ID);
@@ -422,7 +422,7 @@ function formatResult(result) {
 }
 
 
-async function defaultCodeBlockCallback(script, result, code) {
+async function defaultScriptCallback(script, result, code) {
     // Add result below prompt
     if(!result) return
     result = formatResult(result)
