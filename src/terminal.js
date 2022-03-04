@@ -347,8 +347,8 @@ function formatResult(result) {
 }
 
 async function defaultPromptCallback(prompt, command, result, func, args) {
-    // Clear prompt
-    await prompt.block.update("");
+    // // Clear prompt
+    // await prompt.block.update("");
     // Add result below prompt
     if(!result) return
     result = formatResult(result)

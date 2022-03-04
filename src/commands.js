@@ -106,9 +106,10 @@ async function echo(string) {
 
 async function cat(src='^', dst="") {
     let block = argToBlock(src)
-    let dstLoc = argToLocation(dst)
-    let newBlock = await Block.create(block.getString(), dstLoc)
-    return newBlock.toRef()
+    return block.getString()
+    //let dstLoc = argToLocation(dst)
+    //let newBlock = await Block.create(block.getString(), dstLoc)
+    //return newBlock.toRef()
 }
 
 async function listChildren(src='^', dst='', opts = {recursive: true}) {
