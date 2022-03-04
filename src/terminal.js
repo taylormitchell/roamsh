@@ -27,19 +27,13 @@ Prompt.prototype = {
     // Main prompt actions & properties
     execute: async function () {
         // Get command from block and save
-        let commandString = this.getString()
-        this.commandHistory.push(commandString)
+        let command = this.getString()
+        this.commandHistory.push(command)
         this.commandHistoryId = 0
         // Transpile and execute
-        try {
-            let [func, ...args]  = this.interpreter.transpile(commandString)
-            let res = await func(...args)
-            for(let callback of this.callbacks) {
-               await callback(this, commandString, res, func, args)
-            }
-        } catch (error) {
-            this.reportError(error)
-        }
+        let [func, ...args]  = this.interpreter.transpile(command)
+        let result = await func(...args)
+        return [command, result, func, args]
     },
     goToPrev: function() {
         if (this.commandHistoryId <= -this.commandHistory.length) {
@@ -189,6 +183,27 @@ CodeBlock.prototype.execute = function() {
 CodeBlock.prototype.getCode = function() {
     return this.element.innerText
 }
+CodeBlock.prototype.getBlock = function() {
+    let el = this.element
+    while(el && !(el.classList.contains("roam-block"))) {
+        el = el.parentElement 
+    }
+    let id = el.id || ""
+    let match = id.match(/block-input-.*\d\d-\d\d-\d\d\d\d-(.*)/) || []
+    if(match[1]) {
+        return new Block(match[1])
+    }    
+    return null
+}
+CodeBlock.prototype.reportError = function(error) {
+    let block = this.getBlock()
+    if(block) {
+        errorCodeBlock = "`".repeat(3) + "plain text\n" + error.toString() + "`".repeat(3)
+        block.addChild(errorCodeBlock)
+    }
+    throw error
+}
+
 
 
 Terminal = {
@@ -198,11 +213,22 @@ Terminal = {
     // User affordances
     executePrompt: async function(prompt) {
         if(!prompt) prompt = Prompt.getFocused()
-        return await prompt.execute()
+        try {
+            let [command, result, func, args] = await prompt.execute()
+            for(let callback of this.callbacks) {
+                await callback(prompt, command, result, func, args)
+            }
+        } catch (error) {
+            prompt.reportError(error)
+        }
     },
     executeCodeBlock: async function(codeBlock) {
         if(!codeBlock) codeBlock = CodeBlock.getFocused()
-        return await codeBlock.execute()
+        try {
+            return await codeBlock.execute()
+        } catch (error) {
+            codeBlock.reportError(error)
+        }
     },
     hotkeyHandler: function(e) {
         if (e.ctrlKey && e.metaKey && e.key == "Enter") {
