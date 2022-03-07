@@ -219,7 +219,7 @@ Script.prototype.execute = async function() {
                 ${code}
             }
         )()`
-    let result = await (async () => eval(asyncCode))()
+    let result = await eval(asyncCode)
     return [code, result]
 } 
 Script.prototype.toMarkdown = function() {

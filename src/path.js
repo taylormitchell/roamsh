@@ -175,7 +175,7 @@ PathInterpreter.prototype.error = function(message, token) {
         pointer = " ".repeat(token.index) + "^".repeat(token.lexeme.length)
         message += "\n\n" + string + "\n" + pointer
     }
-    throw NotFoundError(message)
+    throw new NotFoundError(message)
 }
 PathInterpreter.prototype.evaluate = function() {
     // Go to start
