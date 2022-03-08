@@ -29,7 +29,10 @@ function Block(idx) {
             let uid;
             try {
                 let path = new Path(idx)
-                uid = path.evaluate()
+                res = path.evaluate()
+                if(!(res instanceof Location)) {
+                    uid = res[":block/uid"]
+                }
             } catch(e) {
                 // If it's a ParserError, that just means it wasn't a valid path
                 // which could very well be the case. If it's a NotFoundError, we'll
@@ -52,9 +55,9 @@ function Block(idx) {
     ]`)
 }
 Block.getFocused = function() {
-    let uid = util.getFocused()
-    if(uid) {
-        return new Block(uid)
+    let obj = util.getFocused()
+    if(obj) {
+        return new Block(obj[":block/uid"])
     }
     return null
 }
@@ -193,11 +196,9 @@ Block.prototype = {
     getId: function() {
         return this.id
     },
-    getChildren: function () {
-        let ids = this.getPropertyList("children")
-        return ids
-            .map((id) => new Block(id))
-            .sort((x,y) => x.getOrder() - y.getOrder())
+    getChildren: function (sorted=true) {
+        let children = util.getChildren(this.id, sorted)
+        return children.map(c => new Block(c[':db/id']))
     },
     getString: function() {
         return this.getProperty("string")
@@ -210,19 +211,12 @@ Block.prototype = {
         return ids.map(id => getById(id))
     },
     getParents: function (sorted=true) {
-        let parents = window.roamAlphaAPI.q(`[
-            :find [(pull ?p [*]) ...]
-            :where
-                [?e :block/uid "${this.uid}"]
-                [?e :block/parents ?p]
-        ]`)
-        if (sorted) parents = sortParents(parents)
-        return parents.map(obj => getById(obj.id))
+        let parents = util.getParents(this.id, sorted)
+        return parents.map(p => getById(p[":db/id"]))
     },
     getPage: function() {
         let id = this.getProperty("page")
         return new Page(id)
-
     },
     getHeading: function() {
         return this.getProperty("heading")
@@ -323,24 +317,10 @@ Block.prototype = {
         let parent = this.getParent()
         return parent.getChildren()
     },
-    getRelative: function (offset) {
-        if (offset.direction === siblingDir) {
-            return this.getSiblingAdjacent(offset.magnitude)
-        } else if (offset.direction == descendantDir ) {
-            if (offset.magnitude >= 0) {
-                return this.getChildren()[offset.magnitude] 
-            } else {
-                return this.getParents()[-offset.magnitude]
-            }
-        }
-    },
     // Helpers
     getProperty: function(name, namespace="block") {
-        return window.roamAlphaAPI.q(`[
-            :find ?v .
-            :where
-                [${this.id} :${namespace}/${name} ?v]
-        ]`)
+        let obj = util.getById(this.id)
+        return obj[`:${namespace}/${name}`]
     },
     getPropertyList: function(name, namespace="block") {
         return window.roamAlphaAPI.q(`[
@@ -487,10 +467,8 @@ Page.prototype = {
         return window.roamAlphaAPI.pull("[*]", this.id)
     },
     getChildren: function () {
-        let ids = this.getPropertyList("children")
-        return ids
-            .map((id) => new Block(id))
-            .sort((x,y) => x.getOrder() - y.getOrder())
+        let children = util.getChildren(this.id)
+        return children.map(c => new Block(c[':db/id']))
     },
     getTitle: function() {
         return this.getProperty("title", "node")
@@ -544,11 +522,8 @@ Page.prototype = {
     },
     // Helpers
     getProperty: function(name, namespace="block") {
-        return window.roamAlphaAPI.q(`[
-            :find ?v .
-            :where
-                [${this.id} :${namespace}/${name} ?v]
-        ]`)
+        let obj = util.getById(this.id)
+        return obj[`:${namespace}/${name}`]
     },
     getPropertyList: function(name, namespace="block") {
         return window.roamAlphaAPI.q(`[
@@ -603,7 +578,7 @@ function getByPath(pathString) {
         if(res instanceof Location) {
             return res
         } else {
-            return getByUid(res)
+            return getByUid(res[":block/uid"])
         }
     } catch (e) {
         if(e instanceof NotFoundError) {
@@ -649,9 +624,10 @@ function getLocation(idx) {
         let res = path.evaluate()
         if(res instanceof Location) {
             return res
+        } else {
+            let block = new Block(res[":block/uid"])
+            return block.toLocation()
         }
-        let block = new Block(res)
-        return block.toLocation()
     } else {
         throw new TypeError(`Invalid type: ${typeof(idx)}`) 
     }

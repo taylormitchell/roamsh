@@ -202,33 +202,27 @@ PathInterpreter.prototype.step = function(current, token) {
     if (current instanceof Location) {
         this.error("Can't apply step once path reaches a new location", token)
     }
-    let uid = current;
     if(token.type === Token.TYPES.STEP_TO_CHILD) {
-        return this.stepToChild(uid, token)
+        return this.stepToChild(current, token)
     } else if (token.type === Token.TYPES.STEP_TO_PARENT) {
-        return this.stepToParent(uid, token)
+        return this.stepToParent(current, token)
     } else if (token.type === Token.TYPES.STEP_TO_SIBLING_ABOVE ||
                token.type === Token.TYPES.STEP_TO_SIBLING_BELOW) {
-        return this.stepToSibling(uid, token)
+        return this.stepToSibling(current, token)
     } else {
         throw `Invalid step type: ${token.type}`
     }
 }
 PathInterpreter.prototype.page = function(pageToken) {
     let title = pageToken.value.map(token => token.lexeme).join("")
-    let uid = window.roamAlphaAPI.q(`[
-        :find ?uid .
-        :where
-            [?e :node/title "${title}"]
-            [?e :block/uid ?uid]
-    ]`)
-    return uid
+    return util.getByTitle(title)
 }
 PathInterpreter.prototype.block = function(blockToken) {
-    return blockToken.value[0].lexeme
+    let uid = blockToken.value[0].lexeme
+    return util.getByUid(uid)
 }
-PathInterpreter.prototype.stepToChild = function(uid, token) {
-    let children = util.getChildren(uid)
+PathInterpreter.prototype.stepToChild = function(block, token) {
+    let children = util.getChildren(block)
     // Handle indexer
     if(typeof(token.value) === 'number') {
         let childNum = token.value
@@ -236,26 +230,26 @@ PathInterpreter.prototype.stepToChild = function(uid, token) {
             if (childNum >= 1) {
                 this.error('Child path index must be <=0 when node has no children', token);
             } else {
-                return new Location(uid, 0)
+                return new Location(block[":block/uid"], 0)
             }
         } else if (childNum < 0) {
             return children.slice(childNum)[0]
         } else if (childNum < children.length) {
             return children[childNum]
         } else {
-            return new Location(util.getParent(uid), children.length)
+            return new Location(util.getParent(block)[":block/uid"], children.length)
         }
     // Handle search string
     } else {
-        let matches = children.filter(uid => util.getString(uid) === token.value)
-        if (matches.length === 0) {
+        let matchedChildren = children.filter(child => child[":block/string"] === token.value)
+        if (matchedChildren.length === 0) {
             this.error("No children matching search string", token)
         }
-        return matches[0]
+        return matchedChildren[0]
     }
 }
-PathInterpreter.prototype.stepToParent = function(uid, token) {
-    let parents = util.getParents(uid).reverse()
+PathInterpreter.prototype.stepToParent = function(block, token) {
+    let parents = util.getParents(block).reverse()
     // Handle indexer
     if(typeof(token.value) === 'number') {
         let parentNum = token.value
@@ -266,19 +260,19 @@ PathInterpreter.prototype.stepToParent = function(uid, token) {
         }
     // Handle search string
     } else {
-        let matches = parents.filter(uid => util.getString(uid) === token.value)
-        if (matches.length === 0) {
+        let matchedParents = parents.filter(parent => (parent[":block/string"] || parent[":node/title"]) === token.value)
+        if (matchedParents.length === 0) {
             this.error("No parents matching search string", token)
         }
-        return matches[0]
+        return matchedParents[0]
     }
 }
-PathInterpreter.prototype.stepToSibling = function(uid, token) {
-    if (util.isPage(uid)) {
+PathInterpreter.prototype.stepToSibling = function(block, token) {
+    if (util.isPage(block)) {
         this.error("Can't select a sibling of a Page", token)
     }
-    let siblings = util.getSiblings(uid)
-    currentOrder = util.getOrder(uid)
+    let siblings = util.getSiblings(block)
+    currentOrder = block[":block/order"]
     // Handle indexer
     if(typeof(token.value) === 'number') {
         let order;
@@ -288,11 +282,11 @@ PathInterpreter.prototype.stepToSibling = function(uid, token) {
             order = currentOrder + (token.value + 1)
         }
         if (order < 0) {
-            return new Location(util.getParent(uid), 0)
+            return new Location(util.getParent(block)[":block/uid"], 0)
         } else if (order < siblings.length) {
             return siblings[order]
         } else if (order >= siblings.length) {
-            return new Location(util.getParent(uid), siblings.length)
+            return new Location(util.getParent(block)[":block/uid"], siblings.length)
         }    
     // Handle search string
     } else {
@@ -301,11 +295,11 @@ PathInterpreter.prototype.stepToSibling = function(uid, token) {
         } else {
             siblings = siblings.slice(currentOrder + 1)
         }
-        let matches = siblings.filter(uid => util.getString(uid) === token.value)
-        if (matches.length === 0) {
-            this.error("No parents matching search string", token)
+        let matchedSiblings = siblings.filter(sibling => sibling[":block/string"] === token.value)
+        if (matchedSiblings.length === 0) {
+            this.error("No siblings matching search string", token)
         }
-        return matches[0]
+        return matchedSiblings[0]
     }
 }
 

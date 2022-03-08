@@ -1,14 +1,45 @@
 
 
-function getParents(uid, sorted=true) {
-    let parents = window.roamAlphaAPI.q(`[
-        :find [(pull ?p [*]) ...]
+function getByIdx(idx) {
+    // idx is :db/id
+    if(typeof(idx) === 'number') {
+        return getById(idx)
+    // idx is :block/uid
+    } else if(typeof(idx) === 'string') {
+        return getByUid(idx)
+    // idx is already {:block/uid, :block/string, ...}
+    } else if(typeof(idx) === 'object') {
+        return idx
+    }
+}
+
+function getById(id) {
+    return roamAlphaAPI.pull("[*]", id)
+}
+
+function getByUid(uid) {
+    let id = roamAlphaAPI.q(`[
+        :find ?e .
         :where
             [?e :block/uid "${uid}"]
-            [?e :block/parents ?p]
     ]`)
+    return getById(id)
+}
+
+function getByTitle(title) {
+    let id = roamAlphaAPI.q(`[
+        :find ?e .
+        :where
+            [?e :node/title "${title}"]
+    ]`)
+    return getById(id)
+}
+
+function getParents(idx, sorted=true) {
+    let block = getByIdx(idx)
+    let parents = (block[":block/parents"]||[]).map(p => roamAlphaAPI.pull("[*]", p[":db/id"]))
     if (sorted) parents = sortParents(parents)
-    return parents.map(obj => obj.uid)
+    return parents
 }
 
 function sortParents(parents) {
@@ -25,10 +56,10 @@ function sortParents(parents) {
             continue;
         }
         let [ first, last ] = [ sortedParents[0], sortedParents[sortedParents.length - 1] ]
-        if (last.children.map(obj => obj.id).includes(parent.id)) {
+        if ((last[":block/children"]||[]).map(obj => obj[":db/id"]).includes(parent[":db/id"])) {
             // parent is a child of the last sorted node
             sortedParents.push(parent);
-        } else if (parent.children.map(obj => obj.id).includes(first.id)) {
+        } else if ((parent[":block/children"]||[]).map(obj => obj[":db/id"]).includes(first[":db/id"])) {
             // parent is parent of the first sorted node
             sortedParents = [parent].concat(sortedParents)
         } else {
@@ -39,27 +70,24 @@ function sortParents(parents) {
     return sortedParents
 }
 
-function getParent(uid) {
-    return this.getParents(uid).slice(-1)[0]
+function getParent(idx) {
+    let block = getByIdx(idx)
+    return getParents(block, true).slice(-1)[0]
 }
 
-function getChildren(uid, sorted=true) {
-    let uids = window.roamAlphaAPI.q(`[
-        :find [ ?uids ... ]
-        :where
-            [?e :block/uid "${uid}"]
-            [?e :block/children ?c]
-            [?c :block/uid ?uids]
-    ]`)
+function getChildren(idx, sorted=true) {
+    let block = getByIdx(idx)
+    let children = (block[":block/children"]||[]).map(o => roamAlphaAPI.pull("[*]", o[":db/id"]))
     if(sorted) {
-        uids = uids.sort((x,y) => getOrder(x) - getOrder(y))
+        children = children.sort((x,y) => x[":block/order"] - y[":block/order"])
     }
-    return uids
+    return children
 }
 
-function getSiblings(uid) {
-    let parentUid = this.getParent(uid)
-    return this.getChildren(parentUid)
+function getSiblings(idx) {
+    let block = getByIdx(idx)
+    let parent = getParent(block)
+    return getChildren(parent)
 }
 
 function getOrder(uid) {
@@ -70,23 +98,26 @@ function getString(uid) {
     return getProperty(uid, "string")
 }
 
-function getFocused(uid) {
+function getFocused() {
     let res = roamAlphaAPI.ui.getFocusedBlock()
     if(res) {
-        return res['block-uid']
+        return getByUid(res['block-uid'])
     }
-    let el = document.activeElement
-    return elementToBlockUid(el)
+    let uid = elementToBlockUid(document.activeElement)
+    if(uid) {
+        return getByUid(uid)
+    }
+    return null
 }
 
-function isBlock(uid) {
-    let res = getProperty(uid, "title", "node")
-    return res === null
+function isPage(idx) {
+    let obj = getByIdx(idx)
+    return obj[":node/title"] ? true : false
 }
 
-function isPage(uid) {
-    let res = getProperty(uid, "title", "node")
-    return res !== null
+function isBlock(idx) {
+    let obj = getByIdx(idx)
+    return !isPage(obj)
 }
 
 function getProperty(uid, name, namespace="block") {
@@ -114,6 +145,7 @@ function uidToId(uid) {
             [?e :block/uid "${uid}"]
     ]`)
 }
+
 
 function elementToBlockUid(el) {
     while(el && !(el.classList.contains("roam-block"))) {
@@ -143,5 +175,5 @@ function NotFoundError(message) {
 NotFoundError.prototype = Object.create(Error.prototype)
 NotFoundError.prototype.constructor = NotFoundError
 
-module.exports = {getParents, getParent, getChildren, getSiblings, getOrder, isBlock, isPage, uidToId, getString, getFocused, sortParents, Location, NotFoundError, elementToBlockUid}
+module.exports = {getParents, getParent, getChildren, getSiblings, getOrder, isBlock, isPage, uidToId, getString, getFocused, sortParents, Location, NotFoundError, elementToBlockUid, getByTitle, getByUid, getById}
 
