@@ -107,7 +107,7 @@ Block.prototype = {
             );
             return new Block(child.uid)
         } else {
-            return Block.create(child.toString(), new Location(this.uid, idx))
+            return await Block.create(child.toString(), new Location(this.uid, idx))
         }
     },
     appendChild: async function (blockOrString) {
