@@ -1,0 +1,22 @@
+name: Deploy
+
+on:
+  push:
+    branches: [master]
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v2
+      - uses: actions/setup-node@v2
+        with:
+          node-version: "16"
+      - name: Test
+        run: |
+          npm run test
+      - name: Deploy
+        run: |
+          echo "deployed successfully!"
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
