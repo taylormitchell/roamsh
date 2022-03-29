@@ -215,7 +215,7 @@ Block.prototype = {
         return parents.map(p => getById(p[":db/id"]))
     },
     getPage: function() {
-        let id = this.getProperty("page")
+        let id = this.getProperty("page")[':db/id']
         return new Page(id)
     },
     getHeading: function() {
