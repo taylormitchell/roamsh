@@ -13,11 +13,16 @@ jobs:
         with:
           node-version: "16"
       - run: npm install
-      - name: Test
+      - run: npm run test
+      - run: npm run build
+      - name: Create SSH key
         run: |
-          npm run test
-      - name: Deploy
-        run: |
-          echo "deployed successfully!"
+          mkdir -p ~/.ssh/
+          echo "$SSH_PRIVATE_KEY" > ~/.ssh/id_rsa
+          sudo chmod 600 ~/.ssh/id_rsa
+          ssh-keyscan -H taylormitchell.org  > ~/.ssh/known_hosts
+        shell: bash
         env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          SSH_PRIVATE_KEY: ${{secrets.SSH_PRIVATE_KEY}}
+      - run: source scripts/deploy.sh
+          
